@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.6 — subscribe to heater state changes via WS trigger
+
+- Panel registers a `subscribe_trigger` WS subscription on the configured heater entity. When the entity changes state, HA pushes a trigger message and the panel calls `_refresh()` 150 ms later. Doesn't depend on `set hass()` semantics or `panel_custom` reactive updates which proved unreliable.
+
 ## 0.4.5 — refresh panel on heater entity state change
 
 - Panel watches the configured heater entity directly via `set hass()` (called by HA on every state update). When the entity transitions on↔off, panel triggers an immediate `_refresh()`. Replaces the v0.4.4 event-bus subscription which relied on backend events being dispatched and required an HA restart to pick up; this approach reacts to the entity state itself.

@@ -372,6 +372,7 @@ class DudPanel extends HTMLElement {
   }
   disconnectedCallback() {
     if (this._refreshTimer) clearInterval(this._refreshTimer);
+    if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
   }
 
   _init() {
@@ -384,8 +385,28 @@ class DudPanel extends HTMLElement {
     this.appendChild(this._app);
     this._modalRoot = el("div");
     this.appendChild(this._modalRoot);
-    this._refresh();
+    this._refresh().then(() => this._subscribeHeaterState());
     this._refreshTimer = setInterval(() => this._refresh(), 5000);
+  }
+
+  async _subscribeHeaterState() {
+    if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
+    const heaterId = this._state && this._state.options && this._state.options.heater_entity;
+    if (!heaterId || !this._hass || !this._hass.connection) return;
+    try {
+      this._heaterUnsub = await this._hass.connection.subscribeMessage(
+        (msg) => {
+          if (!msg || !msg.variables || !msg.variables.trigger) return;
+          setTimeout(() => this._refresh(), 150);
+        },
+        {
+          type: "subscribe_trigger",
+          trigger: { platform: "state", entity_id: heaterId },
+        }
+      );
+    } catch (e) {
+      console.warn("[dud_shemesh] heater state subscription failed", e);
+    }
   }
 
   _t(key, ...args) {
