@@ -106,14 +106,52 @@ class DudCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._state = null;
     this._timer = null;
+    this._tickTimer = null;
     this._initialized = false;
+    this._heaterUnsub = null;
+    this._serverOffset = 0;
+    this._endsInValueEl = null;
+    this._endsInEndsAt = 0;
   }
 
   setConfig(config) { this._config = config || {}; if (this._initialized) this._render(); }
   getCardSize() { return 4; }
   set hass(hass) { this._hass = hass; if (!this._initialized) this._init(); }
-  connectedCallback() { if (this._hass && !this._initialized) this._init(); }
-  disconnectedCallback() { if (this._timer) clearInterval(this._timer); }
+  connectedCallback() {
+    if (!this._hass) return;
+    if (!this._initialized) {
+      this._init();
+    } else {
+      this._startTimers();
+      this._refresh().then(() => this._subscribeHeaterState());
+    }
+    if (!this._visibilityHandler) {
+      this._visibilityHandler = () => {
+        if (document.visibilityState === "visible") {
+          this._refresh();
+          this._tickEndsIn();
+        }
+      };
+      document.addEventListener("visibilitychange", this._visibilityHandler);
+    }
+  }
+  disconnectedCallback() {
+    this._stopTimers();
+    if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
+    if (this._visibilityHandler) {
+      document.removeEventListener("visibilitychange", this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
+  }
+
+  _startTimers() {
+    if (!this._timer) this._timer = setInterval(() => this._refresh(), 5000);
+    if (!this._tickTimer) this._tickTimer = setInterval(() => this._tickEndsIn(), 1000);
+  }
+  _stopTimers() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this._tickTimer) { clearInterval(this._tickTimer); this._tickTimer = null; }
+  }
 
   _init() {
     this._initialized = true;
@@ -122,16 +160,61 @@ class DudCard extends HTMLElement {
     this.shadowRoot.appendChild(style);
     this._root = document.createElement("div");
     this.shadowRoot.appendChild(this._root);
-    this._refresh();
-    this._timer = setInterval(() => this._refresh(), 5000);
+    this._refresh().then(() => this._subscribeHeaterState());
+    this._startTimers();
   }
 
   async _refresh() {
     try {
       this._state = await this._hass.callWS({ type: "dud_shemesh/get_state" });
+      if (this._state && typeof this._state.now === "number") {
+        this._serverOffset = this._state.now - Math.floor(Date.now() / 1000);
+      }
       this._render();
     } catch (e) {
       this._renderError(e);
+    }
+  }
+
+  _serverNow() { return Math.floor(Date.now() / 1000) + (this._serverOffset || 0); }
+
+  _formatRemaining(seconds) {
+    if (seconds <= 0) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins < 60) return `${mins}:${secs.toString().padStart(2, "0")}`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}h ${m.toString().padStart(2, "0")}m`;
+  }
+
+  _tickEndsIn() {
+    if (!this._endsInValueEl || !this._endsInEndsAt) return;
+    if (!this._endsInValueEl.isConnected) {
+      this._endsInValueEl = null;
+      this._endsInEndsAt = 0;
+      return;
+    }
+    const remaining = Math.max(0, this._endsInEndsAt - this._serverNow());
+    this._endsInValueEl.textContent = this._formatRemaining(remaining);
+    if (remaining === 0) setTimeout(() => this._refresh(), 200);
+  }
+
+  async _subscribeHeaterState() {
+    if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
+    const heaterId = this._state && this._state.options && this._state.options.heater_entity;
+    if (!heaterId || !this._hass || !this._hass.connection) return;
+    try {
+      this._heaterUnsub = await this._hass.connection.subscribeEvents(
+        (ev) => {
+          if (!ev || !ev.data) return;
+          if (ev.data.entity_id !== heaterId) return;
+          this._refresh();
+        },
+        "state_changed"
+      );
+    } catch (e) {
+      console.warn("[dud_shemesh-card] heater state subscription failed", e);
     }
   }
 
@@ -192,10 +275,11 @@ class DudCard extends HTMLElement {
     const side = document.createElement("div");
     side.className = "side";
     if (active) {
-      const remaining = Math.max(0, active.ends_at - this._state.now);
-      const mins = Math.floor(remaining / 60);
-      const sec = String(remaining % 60).padStart(2, "0");
-      side.appendChild(this._sidePill("Ends in", `${mins}:${sec}`));
+      const remaining = Math.max(0, active.ends_at - this._serverNow());
+      const pill = this._sidePill("Ends in", this._formatRemaining(remaining));
+      this._endsInValueEl = pill.querySelector(".value");
+      this._endsInEndsAt = active.ends_at;
+      side.appendChild(pill);
     } else if (s.estimated_minutes_to_target != null && s.estimated_minutes_to_target > 0) {
       side.appendChild(this._sidePill("To target", `~${s.estimated_minutes_to_target} min`));
     } else {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.12 — apply panel fixes to the Lovelace card
+
+- The fixes shipped in 0.4.5–0.4.10 only touched the sidebar panel (`panel.js`); the Lovelace card (`card.js`) still polled every 5 s with no live ticker, no `state_changed` subscription, no re-attach handling, and no visibility wake-up. All of the same logic is now ported to the card: per-second `Ends in` countdown with server clock skew correction, immediate refresh on heater entity state change, restart of timers/subscriptions when the card is re-attached to the DOM, and force-refresh when the browser tab returns to foreground.
+- Removed the diagnostic `console.log` calls added in 0.4.11 from `panel.js`.
+
 ## 0.4.11 — diagnostic logging for state subscription + tick
 
 - Adds `console.log` calls to verify the panel actually subscribes to the heater entity's `state_changed` events and that the 1-second tick handler is firing. Logs prefixed `[dud_shemesh]`. Diagnostic only — will be cleaned up once the upstream issue is identified.
