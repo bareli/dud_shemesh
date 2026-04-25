@@ -8,6 +8,32 @@ A Home Assistant **custom integration** that turns any smart switch + temperatur
 
 > Why: commercial smart-dud devices cost ₪400–800 and trap you in proprietary apps. This integration lives entirely in Home Assistant, runs on whatever relay + temp sensor you already have, and saves real electricity by skipping heat cycles when the tank is already warm enough.
 
+## Screenshots
+
+### Panel — Control
+
+Big circular gauge with drag-to-set target marker, status badge, side pills (ends-in / target / anti-Legionella), boost row, mode toggle, today timeline, schedule list.
+
+![Panel control](docs/screenshots/panel-control.png)
+
+### Panel — Reports
+
+Today / 7-day / 30-day on-time, kWh, ₪ cost (configurable IEC tariff). Heater health (avg °C/min). 24h tank-temperature graph. Skip-reasons summary.
+
+![Panel reports](docs/screenshots/panel-reports.png)
+
+### Settings (advanced expanded)
+
+Calendar one-off heat, weather skip, solar tracking, fail detection, anti-Legionella, vacation mode, notifications.
+
+![Settings](docs/screenshots/panel-settings.png)
+
+### Lovelace card
+
+Compact gauge + boost + mode for embedding on any dashboard view.
+
+![Lovelace card](docs/screenshots/card.png)
+
 ## Features
 
 **Hero UI**

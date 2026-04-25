@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 — README screenshots
+
+- Added 4 screenshots to README: panel control, panel reports, settings (advanced expanded), Lovelace card.
+
 ## 0.4.1 — fix services.yaml validation
 
 - Quoted `"off"` in set_mode selector options. YAML 1.1 parses unquoted `off` as boolean false, which broke hassfest validation of services.yaml.
