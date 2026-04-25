@@ -348,6 +348,20 @@ class DudPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._initialized) this._init();
+    this._maybeRefreshOnHeaterChange();
+  }
+
+  _maybeRefreshOnHeaterChange() {
+    if (!this._hass || !this._state) return;
+    const heaterId = this._state.options && this._state.options.heater_entity;
+    if (!heaterId) return;
+    const cur = this._hass.states && this._hass.states[heaterId];
+    if (!cur) return;
+    const last = this._lastHeaterState;
+    this._lastHeaterState = cur.state;
+    if (last !== undefined && last !== cur.state) {
+      this._refresh();
+    }
   }
   set narrow(v) { this._narrow = v; }
   set route(v) { this._route = v; }
@@ -372,24 +386,6 @@ class DudPanel extends HTMLElement {
     this.appendChild(this._modalRoot);
     this._refresh();
     this._refreshTimer = setInterval(() => this._refresh(), 5000);
-
-    // Subscribe to HA event bus for instant refresh on heater state changes
-    const events = [
-      "dud_shemesh_heat_started",
-      "dud_shemesh_heat_finished",
-      "dud_shemesh_target_reached",
-      "dud_shemesh_boost_extended",
-    ];
-    this._eventUnsubs = [];
-    events.forEach(ev => {
-      try {
-        const conn = this._hass.connection;
-        const promise = conn.subscribeEvents(() => {
-          setTimeout(() => this._refresh(), 100);
-        }, ev);
-        this._eventUnsubs.push(promise);
-      } catch (e) { /* fallback to polling */ }
-    });
   }
 
   _t(key, ...args) {

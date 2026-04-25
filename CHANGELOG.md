@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5 — refresh panel on heater entity state change
+
+- Panel watches the configured heater entity directly via `set hass()` (called by HA on every state update). When the entity transitions on↔off, panel triggers an immediate `_refresh()`. Replaces the v0.4.4 event-bus subscription which relied on backend events being dispatched and required an HA restart to pick up; this approach reacts to the entity state itself.
+
 ## 0.4.4 — instant panel refresh on heater events
 
 - Panel subscribes to HA event bus (`dud_shemesh_heat_started`, `heat_finished`, `target_reached`, `boost_extended`) and refreshes UI immediately instead of waiting up to 5 s for the next poll. Closes the visible lag where a heater turned off externally still showed "STOP HEATING" until the next tick.
