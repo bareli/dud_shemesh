@@ -1,3 +1,4 @@
+const PANEL_VERSION = "0.4.9";
 const STYLES = `
 :host, :root {
   --ds-bg: var(--primary-background-color, #f4f6fa);
@@ -375,10 +376,23 @@ class DudPanel extends HTMLElement {
       this._startTimers();
       this._refresh().then(() => this._subscribeHeaterState());
     }
+    if (!this._visibilityHandler) {
+      this._visibilityHandler = () => {
+        if (document.visibilityState === "visible") {
+          this._refresh();
+          this._tickEndsIn();
+        }
+      };
+      document.addEventListener("visibilitychange", this._visibilityHandler);
+    }
   }
   disconnectedCallback() {
     this._stopTimers();
     if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
+    if (this._visibilityHandler) {
+      document.removeEventListener("visibilitychange", this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
   }
   _startTimers() {
     if (!this._refreshTimer) this._refreshTimer = setInterval(() => this._refresh(), 5000);
@@ -518,6 +532,7 @@ class DudPanel extends HTMLElement {
 
     this._app.appendChild(el("div", { class: "header" }, [
       el("h1", {}, "Dud Shemesh"),
+      el("span", { style: "opacity:.55;font-size:11px;margin-left:8px;" }, `v${PANEL_VERSION}`),
       el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: "Settings" }, "⚙"),
     ]));
 

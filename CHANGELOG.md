@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.9 — visibility handling + panel version pill
+
+- Panel registers a `visibilitychange` listener. When the browser tab returns to foreground (after being backgrounded, where browsers throttle `setInterval`), panel forces an immediate `_refresh()` plus a tick of the countdown so UI is current within a frame.
+- Header now shows the panel.js version (`v0.4.9` next to the title) so it's possible to verify which build the browser actually loaded — useful when diagnosing cache issues after upgrades.
+
 ## 0.4.8 — restart timers and subscriptions on panel re-attach
 
 - Fix: HA detaches and re-attaches the panel custom-element when navigating between sidebar entries. Previous code cleared timers in `disconnectedCallback` but the `_init` guard (`if (!_initialized)`) prevented re-setup on re-attach. Result: no 5 s poll, no 1 s countdown ticker, no heater state subscription — UI froze until full page reload (F5).
