@@ -20,19 +20,34 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    CONF_AUTO_COMFORT_WINDOWS,
+    CONF_AUTO_PRE_HEAT_MARGIN_MIN,
+    CONF_FAIL_DETECTION_ENABLED,
+    CONF_FAIL_DETECTION_MINUTES,
+    CONF_FAIL_DETECTION_RISE,
     CONF_HEATER_ENTITY,
     CONF_HEATER_WATTAGE,
     CONF_LEGIONELLA_DAYS,
     CONF_LEGIONELLA_ENABLED,
     CONF_LEGIONELLA_TEMP,
     CONF_MODE,
+    CONF_SOLAR_RISE_THRESHOLD,
+    CONF_SOLAR_TRACK_MINUTES,
     CONF_TARGET_TEMP,
     CONF_TEMP_SENSOR,
+    CONF_WEATHER_ENTITY,
+    CONF_WEATHER_SKIP_STATES,
+    DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN,
+    DEFAULT_FAIL_DETECTION_MINUTES,
+    DEFAULT_FAIL_DETECTION_RISE,
     DEFAULT_HEATER_WATTAGE,
     DEFAULT_LEGIONELLA_DAYS,
     DEFAULT_LEGIONELLA_TEMP,
     DEFAULT_MODE,
+    DEFAULT_SOLAR_RISE_THRESHOLD,
+    DEFAULT_SOLAR_TRACK_MINUTES,
     DEFAULT_TARGET_TEMP,
+    DEFAULT_WEATHER_SKIP_STATES,
     DOMAIN,
     MODE_AUTO,
     MODE_OFF,
@@ -170,6 +185,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "legionella_enabled": entry.options.get(CONF_LEGIONELLA_ENABLED, False),
         "legionella_temp": entry.options.get(CONF_LEGIONELLA_TEMP, DEFAULT_LEGIONELLA_TEMP),
         "legionella_days": entry.options.get(CONF_LEGIONELLA_DAYS, DEFAULT_LEGIONELLA_DAYS),
+        "weather_entity": entry.options.get(CONF_WEATHER_ENTITY, ""),
+        "weather_skip_states": entry.options.get(CONF_WEATHER_SKIP_STATES, DEFAULT_WEATHER_SKIP_STATES),
+        "auto_comfort_windows": entry.options.get(CONF_AUTO_COMFORT_WINDOWS, ""),
+        "auto_pre_heat_margin_min": entry.options.get(CONF_AUTO_PRE_HEAT_MARGIN_MIN, DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN),
+        "fail_detection_enabled": entry.options.get(CONF_FAIL_DETECTION_ENABLED, False),
+        "fail_detection_minutes": entry.options.get(CONF_FAIL_DETECTION_MINUTES, DEFAULT_FAIL_DETECTION_MINUTES),
+        "fail_detection_rise": entry.options.get(CONF_FAIL_DETECTION_RISE, DEFAULT_FAIL_DETECTION_RISE),
+        "solar_track_minutes": entry.options.get(CONF_SOLAR_TRACK_MINUTES, DEFAULT_SOLAR_TRACK_MINUTES),
+        "solar_rise_threshold": entry.options.get(CONF_SOLAR_RISE_THRESHOLD, DEFAULT_SOLAR_RISE_THRESHOLD),
     }
 
     scheduler = DudScheduler(hass, store, options)
@@ -347,6 +371,15 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
         vol.Optional(CONF_LEGIONELLA_ENABLED): cv.boolean,
         vol.Optional(CONF_LEGIONELLA_TEMP): vol.Any(int, float, None),
         vol.Optional(CONF_LEGIONELLA_DAYS): vol.Any(int, None),
+        vol.Optional(CONF_WEATHER_ENTITY): vol.Any(str, None),
+        vol.Optional(CONF_WEATHER_SKIP_STATES): vol.Any(str, None),
+        vol.Optional(CONF_AUTO_COMFORT_WINDOWS): vol.Any(str, None),
+        vol.Optional(CONF_AUTO_PRE_HEAT_MARGIN_MIN): vol.Any(int, float, None),
+        vol.Optional(CONF_FAIL_DETECTION_ENABLED): cv.boolean,
+        vol.Optional(CONF_FAIL_DETECTION_MINUTES): vol.Any(int, float, None),
+        vol.Optional(CONF_FAIL_DETECTION_RISE): vol.Any(int, float, None),
+        vol.Optional(CONF_SOLAR_TRACK_MINUTES): vol.Any(int, float, None),
+        vol.Optional(CONF_SOLAR_RISE_THRESHOLD): vol.Any(int, float, None),
     })
     @websocket_api.async_response
     async def _ws_update_options(hass_inner, connection, msg):
@@ -361,7 +394,11 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
             return
         new_options = dict(entry.options)
         for key in (CONF_TARGET_TEMP, CONF_MODE, CONF_HEATER_WATTAGE,
-                    CONF_LEGIONELLA_ENABLED, CONF_LEGIONELLA_TEMP, CONF_LEGIONELLA_DAYS):
+                    CONF_LEGIONELLA_ENABLED, CONF_LEGIONELLA_TEMP, CONF_LEGIONELLA_DAYS,
+                    CONF_WEATHER_ENTITY, CONF_WEATHER_SKIP_STATES,
+                    CONF_AUTO_COMFORT_WINDOWS, CONF_AUTO_PRE_HEAT_MARGIN_MIN,
+                    CONF_FAIL_DETECTION_ENABLED, CONF_FAIL_DETECTION_MINUTES, CONF_FAIL_DETECTION_RISE,
+                    CONF_SOLAR_TRACK_MINUTES, CONF_SOLAR_RISE_THRESHOLD):
             if key in msg:
                 new_options[key] = msg[key]
         hass_inner.config_entries.async_update_entry(entry, options=new_options)

@@ -16,12 +16,22 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DAY_BITS,
+    DEFAULT_FAIL_DETECTION_MINUTES,
+    DEFAULT_FAIL_DETECTION_RISE,
     DEFAULT_LEGIONELLA_DAYS,
     DEFAULT_LEGIONELLA_TEMP,
+    DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN,
+    DEFAULT_SOLAR_RISE_THRESHOLD,
+    DEFAULT_SOLAR_TRACK_MINUTES,
     DEFAULT_TARGET_TEMP,
+    DEFAULT_WEATHER_SKIP_STATES,
+    EVENT_AUTO_PREHEAT_PLANNED,
+    EVENT_BOOST_EXTENDED,
     EVENT_HEAT_FINISHED,
+    EVENT_HEAT_NOT_RISING,
     EVENT_HEAT_STARTED,
     EVENT_TARGET_REACHED,
+    MODE_AUTO,
     MODE_OFF,
     MODE_SCHEDULE,
     SIGNAL_STATE_CHANGED,
@@ -41,8 +51,11 @@ class DudScheduler:
         self._unsub_minute = None
         self._unsub_temp_check = None
         self._unsub_close = None
-        self._active = None  # {source, started_at, ends_at, target_temp, schedule_id, starting_temp}
+        self._unsub_fail_check = None
+        self._active = None
         self._last_minute_fired: Optional[str] = None
+        self._temp_samples: list[tuple[int, float]] = []  # rolling (ts, temp)
+        self._planned_preheats: dict[str, int] = {}       # window_key -> end_at_ts
 
     @property
     def active(self) -> Optional[dict]:
@@ -94,9 +107,15 @@ class DudScheduler:
             return
         self._last_minute_fired = key
 
+        # Always sample for solar tracking, regardless of mode
+        self._track_temp_sample()
+
         mode = self.options.get("mode", MODE_SCHEDULE)
         if mode == MODE_OFF:
             return
+
+        if mode == MODE_AUTO:
+            self._evaluate_auto_preheat(local)
 
         bit = DAY_BITS[local.weekday()]
         hhmm = local.strftime("%H:%M")
@@ -109,6 +128,20 @@ class DudScheduler:
                 continue
             if self._active:
                 LOG.debug("skip schedule %s: heater already running", sched["id"])
+                continue
+            if self._is_solar_gaining():
+                LOG.info("skip schedule %s: solar gaining", sched["id"])
+                self.hass.async_create_task(self.store.async_record_run(
+                    "schedule", int(sched.get("duration_min", 60)), "skipped_solar",
+                    starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
+                ))
+                continue
+            if self._weather_says_sunny():
+                LOG.info("skip schedule %s: weather sunny", sched["id"])
+                self.hass.async_create_task(self.store.async_record_run(
+                    "schedule", int(sched.get("duration_min", 60)), "skipped_weather",
+                    starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
+                ))
                 continue
             target_temp = sched.get("target_temp")
             current_temp = self._read_temp()
@@ -149,6 +182,55 @@ class DudScheduler:
             source="legionella", duration_min=120, target_temp=target,
             note="anti-legionella",
         ))
+
+    def _track_temp_sample(self) -> None:
+        cur = self._read_temp_raw()
+        if cur is None:
+            return
+        now_ts = int(time.time())
+        self._temp_samples.append((now_ts, cur))
+        track_min = int(self.options.get("solar_track_minutes", DEFAULT_SOLAR_TRACK_MINUTES))
+        cutoff = now_ts - track_min * 60
+        self._temp_samples = [(ts, t) for (ts, t) in self._temp_samples if ts >= cutoff]
+
+    def _solar_rise_per_30min(self) -> Optional[float]:
+        if len(self._temp_samples) < 3:
+            return None
+        oldest_ts, oldest_t = self._temp_samples[0]
+        newest_ts, newest_t = self._temp_samples[-1]
+        elapsed = max(1, newest_ts - oldest_ts)
+        return (newest_t - oldest_t) * (1800.0 / elapsed)
+
+    def _is_solar_gaining(self) -> bool:
+        if self._active:
+            return False
+        rise = self._solar_rise_per_30min()
+        if rise is None:
+            return False
+        threshold = float(self.options.get("solar_rise_threshold", DEFAULT_SOLAR_RISE_THRESHOLD))
+        return rise >= threshold
+
+    def _weather_says_sunny(self) -> bool:
+        ent = (self.options.get("weather_entity") or "").strip()
+        if not ent:
+            return False
+        s = self.hass.states.get(ent)
+        if not s:
+            return False
+        states = [x.strip() for x in str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES)).split(",") if x.strip()]
+        return s.state in states
+
+    def _read_temp_raw(self) -> Optional[float]:
+        sensor = self.options.get("temp_sensor")
+        if not sensor:
+            return None
+        s = self.hass.states.get(sensor)
+        if not s:
+            return None
+        try:
+            return float(s.state)
+        except (TypeError, ValueError):
+            return None
 
     def _read_temp(self) -> Optional[float]:
         sensor = self.options.get("temp_sensor")
@@ -216,8 +298,37 @@ class DudScheduler:
             self.hass, self._on_temp_check, second=15
         )
 
+        # Schedule heat-not-rising check
+        if self.options.get("fail_detection_enabled"):
+            check_after = int(self.options.get("fail_detection_minutes", DEFAULT_FAIL_DETECTION_MINUTES)) * 60
+            if self._unsub_fail_check:
+                self._unsub_fail_check()
+            self._unsub_fail_check = async_call_later(
+                self.hass, check_after, self._on_fail_check
+            )
+
     async def _on_close_timer(self, _now) -> None:
         await self._async_close("completed")
+
+    async def _on_fail_check(self, _now) -> None:
+        if not self._active:
+            return
+        starting = self._active.get("starting_temp")
+        cur = self._read_temp()
+        rise_threshold = float(self.options.get("fail_detection_rise", DEFAULT_FAIL_DETECTION_RISE))
+        if starting is None or cur is None:
+            return
+        if (cur - starting) < rise_threshold:
+            LOG.error(
+                "dud_shemesh: heat-not-rising detected (start=%.1f cur=%.1f need>=%.1f)",
+                starting, cur, rise_threshold,
+            )
+            self.hass.bus.async_fire(EVENT_HEAT_NOT_RISING, {
+                "starting_temp": starting,
+                "current_temp": cur,
+                "elapsed_min": int((time.time() - self._active.get("started_at", time.time())) / 60),
+                "source": self._active.get("source"),
+            })
 
     @callback
     def _on_temp_check(self, _now) -> None:
@@ -256,6 +367,9 @@ class DudScheduler:
         if self._unsub_temp_check:
             self._unsub_temp_check()
             self._unsub_temp_check = None
+        if self._unsub_fail_check:
+            self._unsub_fail_check()
+            self._unsub_fail_check = None
         if active:
             ending_temp = self._read_temp()
             await self.store.async_record_run(
@@ -279,10 +393,84 @@ class DudScheduler:
 
     async def async_boost(self, minutes: int) -> None:
         target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+        if self._active:
+            extra_sec = max(60, int(minutes) * 60)
+            self._active["ends_at"] = int(self._active.get("ends_at", time.time())) + extra_sec
+            self._active["duration_min"] = int(self._active.get("duration_min", 0)) + int(minutes)
+            await self.store.async_set_active_boost(self._active)
+            if self._unsub_close:
+                self._unsub_close()
+            remaining = self._active["ends_at"] - int(time.time())
+            self._unsub_close = async_call_later(self.hass, max(1, remaining), self._on_close_timer)
+            self.hass.bus.async_fire(EVENT_BOOST_EXTENDED, {
+                "added_minutes": int(minutes),
+                "new_ends_at": self._active["ends_at"],
+            })
+            async_dispatcher_send(self.hass, SIGNAL_STATE_CHANGED)
+            return
         await self.async_start_heat(
             source="boost", duration_min=int(minutes),
             target_temp=target, note=f"manual+{minutes}m",
         )
+
+    def _evaluate_auto_preheat(self, local: datetime) -> None:
+        if self._active:
+            return
+        cur = self._read_temp()
+        target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+        if cur is not None and cur >= target:
+            return
+        if self._is_solar_gaining():
+            return
+        if self._weather_says_sunny():
+            return
+
+        windows_str = (self.options.get("auto_comfort_windows") or "").strip()
+        if not windows_str:
+            return
+        windows = []
+        for chunk in windows_str.split(","):
+            chunk = chunk.strip()
+            if not chunk or "-" not in chunk:
+                continue
+            start, _ = chunk.split("-", 1)
+            try:
+                hh, mm = [int(x) for x in start.split(":")]
+                windows.append((hh, mm))
+            except Exception:
+                continue
+        if not windows:
+            return
+
+        margin = int(self.options.get("auto_pre_heat_margin_min", DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN))
+        eta = self.estimate_minutes_to_target() or 30
+
+        for hh, mm in windows:
+            window_start = local.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if window_start <= local:
+                continue
+            minutes_to_window = int((window_start - local).total_seconds() // 60)
+            if minutes_to_window <= eta + margin:
+                key = f"auto:{window_start.isoformat()}"
+                if self._planned_preheats.get(key):
+                    continue
+                self._planned_preheats[key] = int(window_start.timestamp())
+                LOG.info(
+                    "auto pre-heat firing for window %02d:%02d (eta %dmin, margin %dmin)",
+                    hh, mm, eta, margin,
+                )
+                self.hass.bus.async_fire(EVENT_AUTO_PREHEAT_PLANNED, {
+                    "window_start": window_start.isoformat(),
+                    "estimated_eta_min": eta,
+                    "margin_min": margin,
+                })
+                self.hass.async_create_task(self.async_start_heat(
+                    source="auto",
+                    duration_min=eta + margin,
+                    target_temp=target,
+                    note=f"auto-preheat:{hh:02d}:{mm:02d}",
+                ))
+                break
 
     async def _call_heater(self, entity_id: str, on: bool) -> None:
         domain = entity_id.split(".")[0]
@@ -323,14 +511,17 @@ class DudScheduler:
             label = "solar"
         else:
             label = "waiting"
+        rise = self._solar_rise_per_30min()
         return {
             "status": label,
             "current_temp": cur,
             "target_temp": target,
             "active": self.active,
             "estimated_minutes_to_target": self.estimate_minutes_to_target(),
+            "solar_rise_per_30min": round(rise, 2) if rise is not None else None,
+            "solar_gaining": self._is_solar_gaining(),
+            "weather_skip_active": self._weather_says_sunny(),
         }
 
-    def _is_solar_gaining(self) -> bool:
-        # MVP placeholder: always False. v0.2 will track temp deltas over rolling window.
-        return False
+    def solar_rise_per_30min(self) -> Optional[float]:
+        return self._solar_rise_per_30min()
