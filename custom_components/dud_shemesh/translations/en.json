@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dud Shemesh",
+        "description": "Pick the heater (relay) and the tank temperature sensor.",
+        "data": {
+          "heater_entity": "Heater (electric element relay)",
+          "temp_sensor": "Tank temperature sensor (optional)",
+          "target_temp": "Target temperature",
+          "heater_wattage_w": "Element wattage"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Dud Shemesh is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Dud Shemesh options",
+        "data": {
+          "heater_entity": "Heater (electric element relay)",
+          "temp_sensor": "Tank temperature sensor",
+          "target_temp": "Target temperature",
+          "heater_wattage_w": "Element wattage",
+          "mode": "Mode",
+          "legionella_enabled": "Anti-Legionella cycle",
+          "legionella_temp": "Anti-Legionella temperature",
+          "legionella_days": "Anti-Legionella interval (days)"
+        }
+      }
+    }
+  }
+}

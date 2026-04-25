@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "דוד שמש",
+        "description": "בחר את ממסר החימום ואת חיישן טמפרטורת המים.",
+        "data": {
+          "heater_entity": "ממסר חימום (גוף חימום חשמלי)",
+          "temp_sensor": "חיישן טמפרטורת המיכל (אופציונלי)",
+          "target_temp": "טמפרטורה רצויה",
+          "heater_wattage_w": "הספק גוף החימום"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "אינטגרציית דוד שמש כבר מוגדרת."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "אפשרויות דוד שמש",
+        "data": {
+          "heater_entity": "ממסר חימום",
+          "temp_sensor": "חיישן טמפרטורה",
+          "target_temp": "טמפרטורה רצויה",
+          "heater_wattage_w": "הספק גוף החימום",
+          "mode": "מצב",
+          "legionella_enabled": "מחזור נגד ליגיונלה",
+          "legionella_temp": "טמפרטורת מחזור נגד ליגיונלה",
+          "legionella_days": "תדירות מחזור (ימים)"
+        }
+      }
+    }
+  }
+}

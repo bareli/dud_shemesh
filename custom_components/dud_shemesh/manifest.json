@@ -1,0 +1,13 @@
+{
+  "domain": "dud_shemesh",
+  "name": "Dud Shemesh",
+  "codeowners": ["@bareli"],
+  "config_flow": true,
+  "dependencies": ["http", "lovelace", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/bareli/dud_shemesh",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/bareli/dud_shemesh/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

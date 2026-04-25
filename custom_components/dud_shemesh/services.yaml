@@ -1,0 +1,162 @@
+boost:
+  name: Boost
+  description: Manually start the heater for N minutes.
+  fields:
+    minutes:
+      name: Minutes
+      required: false
+      default: 60
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 720
+          step: 1
+          unit_of_measurement: min
+
+cancel_boost:
+  name: Cancel boost
+  description: Stop the heater immediately.
+
+set_mode:
+  name: Set mode
+  description: Switch automatic / scheduled / off mode.
+  fields:
+    mode:
+      name: Mode
+      required: true
+      selector:
+        select:
+          options:
+            - auto
+            - schedule
+            - off
+
+set_target_temp:
+  name: Set target temperature
+  description: Set the desired tank temperature.
+  fields:
+    temp:
+      name: Temperature
+      required: true
+      selector:
+        number:
+          min: 20
+          max: 80
+          step: 1
+          unit_of_measurement: °C
+
+add_schedule:
+  name: Add schedule
+  description: Add a recurring heating schedule.
+  fields:
+    time:
+      name: Time
+      required: true
+      example: "06:00"
+      selector:
+        time:
+    days:
+      name: Days
+      required: true
+      selector:
+        select:
+          multiple: true
+          options: [mon, tue, wed, thu, fri, sat, sun]
+    duration_minutes:
+      name: Duration (minutes)
+      required: false
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 720
+          step: 1
+          unit_of_measurement: min
+    target_temp:
+      name: Target temperature (optional)
+      required: false
+      selector:
+        number:
+          min: 20
+          max: 80
+          step: 1
+          unit_of_measurement: °C
+    name:
+      name: Name
+      required: false
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      required: false
+      default: true
+      selector:
+        boolean:
+
+update_schedule:
+  name: Update schedule
+  description: Patch an existing schedule by id.
+  fields:
+    schedule_id:
+      name: Schedule ID
+      required: true
+      selector:
+        text:
+    time:
+      name: Time
+      required: false
+      selector:
+        time:
+    days:
+      name: Days
+      required: false
+      selector:
+        select:
+          multiple: true
+          options: [mon, tue, wed, thu, fri, sat, sun]
+    duration_minutes:
+      name: Duration (minutes)
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 720
+          step: 1
+          unit_of_measurement: min
+    target_temp:
+      name: Target temperature
+      required: false
+      selector:
+        number:
+          min: 20
+          max: 80
+          step: 1
+          unit_of_measurement: °C
+    name:
+      name: Name
+      required: false
+      selector:
+        text:
+    enabled:
+      name: Enabled
+      required: false
+      selector:
+        boolean:
+
+remove_schedule:
+  name: Remove schedule
+  fields:
+    schedule_id:
+      name: Schedule ID
+      required: true
+      selector:
+        text:
+
+legionella_run_now:
+  name: Run anti-Legionella cycle now
+  description: Force a 60 °C+ heating cycle to suppress bacteria.
+
+list_config:
+  name: List config
+  description: Returns schedules, history, active heat run, options, and current status.

@@ -1,0 +1,649 @@
+const STYLES = `
+:host, :root {
+  --ds-bg: var(--primary-background-color, #f4f6fa);
+  --ds-card: var(--card-background-color, #fff);
+  --ds-text: var(--primary-text-color, #1f2933);
+  --ds-muted: var(--secondary-text-color, #6b7280);
+  --ds-primary: var(--primary-color, #ff7a00);
+  --ds-cool: #2196f3;
+  --ds-warm: #4caf50;
+  --ds-hot: #ff9800;
+  --ds-danger: var(--error-color, #e53935);
+  --ds-border: var(--divider-color, #e5e7eb);
+}
+* { box-sizing: border-box; }
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+  font-family: var(--paper-font-body1_-_font-family, -apple-system, Roboto, sans-serif);
+  color: var(--ds-text);
+}
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.header h1 { margin: 0; font-size: 24px; font-weight: 500; }
+.icon-btn {
+  background: transparent; border: none; cursor: pointer;
+  padding: 8px; border-radius: 50%; color: var(--ds-muted);
+  font-size: 20px;
+}
+.icon-btn:hover { background: var(--ds-border); }
+.card {
+  background: var(--ds-card);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border: 1px solid var(--ds-border);
+}
+.gauge-card {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 600px) {
+  .gauge-card { grid-template-columns: 1fr; }
+  .side { order: 2; flex-direction: row !important; justify-content: space-around !important; }
+}
+.gauge-wrap { position: relative; display: flex; justify-content: center; }
+.side {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.side-item {
+  text-align: center;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--ds-bg);
+  border: 1px solid var(--ds-border);
+}
+.side-item .label { font-size: 11px; color: var(--ds-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.side-item .value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+.boost-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.boost-btn {
+  background: var(--ds-primary);
+  color: white;
+  border: none;
+  padding: 18px 10px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+  box-shadow: 0 4px 12px rgba(255,122,0,0.25);
+  font-family: inherit;
+}
+.boost-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,122,0,0.35); }
+.boost-btn:active { transform: translateY(0); }
+.boost-btn.cancel { background: var(--ds-danger); box-shadow: 0 4px 12px rgba(229,57,53,0.25); }
+.mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--ds-bg);
+  border-radius: 14px;
+  padding: 4px;
+  border: 1px solid var(--ds-border);
+}
+.mode-pill {
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--ds-muted);
+  transition: all 0.2s;
+}
+.mode-pill.active {
+  background: var(--ds-card);
+  color: var(--ds-text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.timeline {
+  display: flex;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  margin-top: 8px;
+  position: relative;
+}
+.timeline-seg { flex: 1; }
+.timeline-seg.idle { background: var(--ds-border); }
+.timeline-seg.heating { background: var(--ds-hot); }
+.timeline-seg.solar { background: #ffd54f; }
+.timeline-seg.scheduled { background: var(--ds-cool); }
+.timeline-now {
+  position: absolute;
+  top: -4px; bottom: -4px;
+  width: 2px;
+  background: var(--ds-text);
+  pointer-events: none;
+}
+.timeline-labels {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--ds-muted);
+  margin-top: 4px;
+}
+.schedule-card h3, .settings-card h3 { margin: 0 0 12px; font-size: 16px; }
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  background: var(--ds-bg);
+}
+.row .name { font-weight: 500; }
+.row .sub { font-size: 12px; color: var(--ds-muted); }
+.row .actions { display: flex; gap: 6px; }
+.btn {
+  background: var(--ds-card); border: 1px solid var(--ds-border);
+  color: var(--ds-text); padding: 6px 12px; border-radius: 8px;
+  cursor: pointer; font: inherit; font-size: 13px;
+}
+.btn.primary { background: var(--ds-primary); border-color: var(--ds-primary); color: white; }
+.btn.danger { color: var(--ds-danger); border-color: var(--ds-danger); }
+.btn.small { padding: 4px 10px; font-size: 12px; }
+.empty { color: var(--ds-muted); font-style: italic; padding: 8px 0; }
+.field { display: block; margin-bottom: 12px; }
+.field span { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--ds-muted); }
+.field input, .field select {
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--ds-border); border-radius: 8px;
+  background: var(--ds-card); color: var(--ds-text); font: inherit;
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal {
+  background: var(--ds-card); border-radius: 16px; padding: 20px;
+  max-width: 460px; width: calc(100% - 32px); max-height: 85vh; overflow-y: auto;
+}
+.modal h3 { margin: 0 0 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; }
+.day-toggle {
+  padding: 6px 10px; border: 1px solid var(--ds-border);
+  border-radius: 6px; cursor: pointer; user-select: none; font-size: 12px;
+}
+.day-toggle.on { background: var(--ds-primary); border-color: var(--ds-primary); color: white; }
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  padding: 10px 16px; background: var(--ds-text); color: var(--ds-bg);
+  border-radius: 6px; font-size: 13px; z-index: 200;
+}
+.toast.error { background: var(--ds-danger); color: white; }
+.toast.ok { background: var(--ds-warm); color: white; }
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 8px;
+}
+.status-badge.heating { background: rgba(255,152,0,0.15); color: var(--ds-hot); animation: pulse 1.5s infinite; }
+.status-badge.ready { background: rgba(76,175,80,0.15); color: var(--ds-warm); }
+.status-badge.solar { background: rgba(255,213,79,0.25); color: #f57f17; }
+.status-badge.cold { background: rgba(33,150,243,0.15); color: var(--ds-cool); }
+.status-badge.waiting { background: var(--ds-border); color: var(--ds-muted); }
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+`;
+
+function el(tag, attrs = {}, children = []) {
+  const n = document.createElement(tag);
+  for (const k of Object.keys(attrs)) {
+    const v = attrs[k];
+    if (k === "class") n.className = v;
+    else if (k === "html") n.innerHTML = v;
+    else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === false || v == null) {}
+    else if (v === true) n.setAttribute(k, "");
+    else n.setAttribute(k, v);
+  }
+  (Array.isArray(children) ? children : [children]).forEach(c => {
+    if (c == null) return;
+    n.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+  });
+  return n;
+}
+
+function svgEl(tag, attrs = {}, children = []) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k of Object.keys(attrs)) {
+    if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+  }
+  (Array.isArray(children) ? children : [children]).forEach(c => c && n.appendChild(c));
+  return n;
+}
+
+const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_BITS = [1, 2, 4, 8, 16, 32, 64];
+
+function maskFromDays(days) {
+  let mask = 0;
+  for (const d of days) {
+    const i = DAYS.indexOf(d);
+    if (i >= 0) mask |= DAY_BITS[i];
+  }
+  return mask;
+}
+function daysFromMask(mask) {
+  return DAYS.filter((_, i) => mask & DAY_BITS[i]);
+}
+
+class DudPanel extends HTMLElement {
+  constructor() {
+    super();
+    this._initialized = false;
+    this._state = null;
+    this._refreshTimer = null;
+    this._modalRoot = null;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._initialized) this._init();
+  }
+  set narrow(v) { this._narrow = v; }
+  set route(v) { this._route = v; }
+  set panel(v) { this._panel = v; }
+
+  connectedCallback() {
+    if (this._hass && !this._initialized) this._init();
+  }
+  disconnectedCallback() {
+    if (this._refreshTimer) clearInterval(this._refreshTimer);
+  }
+
+  _init() {
+    this._initialized = true;
+    const style = el("style"); style.textContent = STYLES;
+    this.appendChild(style);
+    this._app = el("div", { class: "app" });
+    this.appendChild(this._app);
+    this._modalRoot = el("div");
+    this.appendChild(this._modalRoot);
+    this._refresh();
+    this._refreshTimer = setInterval(() => this._refresh(), 5000);
+  }
+
+  async _refresh() {
+    try {
+      this._state = await this._hass.callWS({ type: "dud_shemesh/get_state" });
+      const focused = document.activeElement;
+      if (focused && focused.tagName === "INPUT" && this.contains(focused)) return;
+      this._render();
+    } catch (e) {
+      this._renderError(e);
+    }
+  }
+
+  _renderError(e) {
+    this._app.innerHTML = "";
+    this._app.appendChild(el("div", { class: "card" }, [
+      el("h2", {}, "Dud Shemesh"),
+      el("div", { style: "color:var(--ds-danger)" }, "Failed to load: " + (e.message || "unknown")),
+    ]));
+  }
+
+  _toast(msg, kind = "") {
+    const t = el("div", { class: "toast " + kind }, msg);
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2500);
+  }
+
+  async _callService(service, data) {
+    try {
+      await this._hass.callService("dud_shemesh", service, data || {});
+      this._toast("Done", "ok");
+      setTimeout(() => this._refresh(), 300);
+      return true;
+    } catch (e) {
+      this._toast(e.message || String(e), "error");
+      return false;
+    }
+  }
+
+  async _saveOptions(patch) {
+    try {
+      await this._hass.callWS(Object.assign({ type: "dud_shemesh/update_options" }, patch));
+      this._toast("Saved", "ok");
+      setTimeout(() => this._refresh(), 300);
+    } catch (e) {
+      this._toast(e.message || String(e), "error");
+    }
+  }
+
+  _render() {
+    if (!this._state) return;
+    const opts = this._state.options || {};
+    const status = this._state.status || {};
+    this._app.innerHTML = "";
+
+    this._app.appendChild(el("div", { class: "header" }, [
+      el("h1", {}, "Dud Shemesh"),
+      el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: "Settings" }, "⚙"),
+    ]));
+
+    this._app.appendChild(this._renderGauge(status, opts));
+    this._app.appendChild(this._renderBoost(status));
+    this._app.appendChild(this._renderModeToggle(opts.mode || "schedule"));
+    this._app.appendChild(this._renderTimeline(this._state.history || [], status));
+    this._app.appendChild(this._renderSchedules(this._state.schedules || []));
+  }
+
+  _renderGauge(status, opts) {
+    const card = el("div", { class: "card gauge-card" });
+    const cur = status.current_temp;
+    const target = status.target_temp || opts.target_temp || 55;
+    const tempUnit = this._state.temperature_unit || "°C";
+
+    const minTemp = 20, maxTemp = 80;
+    const clamped = cur != null ? Math.max(minTemp, Math.min(maxTemp, cur)) : minTemp;
+    const pct = ((clamped - minTemp) / (maxTemp - minTemp));
+    const targetPct = ((target - minTemp) / (maxTemp - minTemp));
+
+    const startAngle = -210, endAngle = 30;
+    const angleSpan = endAngle - startAngle;
+    const valueAngle = startAngle + angleSpan * pct;
+    const targetAngle = startAngle + angleSpan * targetPct;
+
+    const cx = 130, cy = 130, r = 105, sw = 18;
+    const polar = (a, R) => [cx + R * Math.cos(a * Math.PI / 180), cy + R * Math.sin(a * Math.PI / 180)];
+    const arcPath = (a1, a2, R) => {
+      const [x1, y1] = polar(a1, R);
+      const [x2, y2] = polar(a2, R);
+      const large = (a2 - a1) > 180 ? 1 : 0;
+      return `M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2}`;
+    };
+
+    const tempColor = cur == null ? "#9e9e9e"
+      : cur < 35 ? "#2196f3"
+      : cur < 45 ? "#4caf50"
+      : cur < 60 ? "#ff9800"
+      : "#e53935";
+
+    const svg = svgEl("svg", { viewBox: "0 0 260 260", style: "width:100%;max-width:260px;height:auto;" }, [
+      svgEl("path", { d: arcPath(startAngle, endAngle, r), fill: "none", stroke: "rgba(0,0,0,0.08)", "stroke-width": sw, "stroke-linecap": "round" }),
+      svgEl("path", { d: arcPath(startAngle, valueAngle, r), fill: "none", stroke: tempColor, "stroke-width": sw, "stroke-linecap": "round" }),
+      svgEl("circle", { cx: polar(targetAngle, r)[0], cy: polar(targetAngle, r)[1], r: 6, fill: "var(--ds-text)" }),
+      svgEl("text", { x: cx, y: cy - 8, "text-anchor": "middle", "font-size": "44", "font-weight": "700", fill: "var(--ds-text)", "font-family": "inherit" },
+        document.createTextNode(cur != null ? `${Math.round(cur)}` : "—")),
+      svgEl("text", { x: cx, y: cy + 22, "text-anchor": "middle", "font-size": "16", fill: "var(--ds-muted)", "font-family": "inherit" },
+        document.createTextNode(tempUnit)),
+      svgEl("text", { x: cx, y: cy + 50, "text-anchor": "middle", "font-size": "12", fill: "var(--ds-muted)", "font-family": "inherit" },
+        document.createTextNode(`Target ${target}${tempUnit}`)),
+    ]);
+
+    const wrap = el("div", { class: "gauge-wrap" }, svg);
+    const status_label = (status.status || "waiting").toLowerCase();
+    const STATUS_LABELS = { ready: "Ready", heating: "Heating", waiting: "Waiting", solar: "Solar", cold: "Cold" };
+    wrap.appendChild(el("div", {
+      style: "position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);text-align:center;",
+    }, [
+      el("span", { class: "status-badge " + status_label }, STATUS_LABELS[status_label] || status_label),
+    ]));
+
+    const side = el("div", { class: "side" });
+    const active = status.active;
+    if (active) {
+      const remaining = Math.max(0, active.ends_at - this._state.now);
+      const mins = Math.floor(remaining / 60);
+      side.appendChild(el("div", { class: "side-item" }, [
+        el("div", { class: "label" }, "Heating ends in"),
+        el("div", { class: "value" }, `${mins} min`),
+      ]));
+    } else if (status.estimated_minutes_to_target != null && status.estimated_minutes_to_target > 0) {
+      side.appendChild(el("div", { class: "side-item" }, [
+        el("div", { class: "label" }, "To target"),
+        el("div", { class: "value" }, `~${status.estimated_minutes_to_target} min`),
+      ]));
+    } else {
+      side.appendChild(el("div", { class: "side-item" }, [
+        el("div", { class: "label" }, "Status"),
+        el("div", { class: "value" }, STATUS_LABELS[status_label] || status_label),
+      ]));
+    }
+    side.appendChild(el("div", { class: "side-item" }, [
+      el("div", { class: "label" }, "Mode"),
+      el("div", { class: "value" }, (opts.mode || "schedule").toUpperCase()),
+    ]));
+
+    card.appendChild(wrap);
+    card.appendChild(side);
+    return card;
+  }
+
+  _renderBoost(status) {
+    const card = el("div", { class: "card" });
+    if (status.active) {
+      const row = el("div", { class: "boost-row" });
+      row.appendChild(el("button", {
+        class: "boost-btn cancel",
+        onClick: () => this._callService("cancel_boost", {}),
+      }, "STOP HEATING"));
+      card.appendChild(row);
+    } else {
+      const row = el("div", { class: "boost-row" });
+      [["+30 min", 30], ["+1 hour", 60], ["+2 hours", 120]].forEach(([label, mins]) => {
+        row.appendChild(el("button", {
+          class: "boost-btn",
+          onClick: () => this._callService("boost", { minutes: mins }),
+        }, label));
+      });
+      card.appendChild(row);
+    }
+    return card;
+  }
+
+  _renderModeToggle(mode) {
+    const card = el("div", { class: "card", style: "padding:8px;" });
+    const wrap = el("div", { class: "mode-toggle" });
+    [["auto", "Auto"], ["schedule", "Schedule"], ["off", "Off"]].forEach(([key, label]) => {
+      const pill = el("div", {
+        class: "mode-pill" + (mode === key ? " active" : ""),
+        onClick: () => this._saveOptions({ mode: key }),
+      }, label);
+      wrap.appendChild(pill);
+    });
+    card.appendChild(wrap);
+    return card;
+  }
+
+  _renderTimeline(history, status) {
+    const card = el("div", { class: "card" });
+    card.appendChild(el("h3", {}, "Today"));
+    const segs = new Array(48).fill("idle"); // 30-min slots × 24h
+    const now = new Date(this._state.now * 1000);
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).getTime() / 1000;
+    history.forEach(h => {
+      if (h.ts < dayStart) return;
+      const slotStart = Math.max(0, Math.floor((h.ts - dayStart) / 1800));
+      const dur = (h.duration_min || 0) / 30;
+      const slotEnd = Math.min(48, Math.ceil(slotStart + dur));
+      const tone = h.status === "completed" || h.status === "started" || h.status === "target_reached"
+        ? (h.source === "schedule" ? "scheduled" : "heating")
+        : "idle";
+      for (let i = slotStart; i < slotEnd && i < 48; i++) segs[i] = tone;
+    });
+    if (status.active) {
+      const startSlot = Math.floor((status.active.started_at - dayStart) / 1800);
+      const endSlot = Math.min(48, Math.ceil((status.active.ends_at - dayStart) / 1800));
+      for (let i = Math.max(0, startSlot); i < endSlot; i++) segs[i] = "heating";
+    }
+    const tl = el("div", { class: "timeline" });
+    segs.forEach(t => tl.appendChild(el("div", { class: "timeline-seg " + t })));
+    const nowSlotPct = ((now.getHours() * 60 + now.getMinutes()) / 1440) * 100;
+    tl.appendChild(el("div", { class: "timeline-now", style: `left:${nowSlotPct}%;` }));
+    card.appendChild(tl);
+    card.appendChild(el("div", { class: "timeline-labels" }, [
+      el("span", {}, "00"), el("span", {}, "06"), el("span", {}, "12"), el("span", {}, "18"), el("span", {}, "23"),
+    ]));
+    return card;
+  }
+
+  _renderSchedules(schedules) {
+    const card = el("div", { class: "card schedule-card" });
+    card.appendChild(el("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;" }, [
+      el("h3", { style: "margin:0;" }, "Schedules"),
+      el("button", { class: "btn primary small", onClick: () => this._openScheduleModal(null) }, "+ Add"),
+    ]));
+    if (!schedules.length) {
+      card.appendChild(el("div", { class: "empty" }, "No schedules. Tap + Add to create one."));
+      return card;
+    }
+    schedules.forEach(s => {
+      const dlabel = DAY_LABELS.filter((_, i) => s.days_mask & DAY_BITS[i]).join(",");
+      const sub = `${s.time_hhmm} • ${dlabel} • ${s.duration_min}min` + (s.target_temp ? ` • →${s.target_temp}°` : "");
+      card.appendChild(el("div", { class: "row" }, [
+        el("div", {}, [
+          el("div", { class: "name" }, (s.name || `Heat ${s.time_hhmm}`) + (s.enabled ? "" : " (off)")),
+          el("div", { class: "sub" }, sub),
+        ]),
+        el("div", { class: "actions" }, [
+          el("button", { class: "btn small", onClick: () => this._openScheduleModal(s) }, "Edit"),
+          el("button", {
+            class: "btn small",
+            onClick: () => this._callService("update_schedule", { schedule_id: s.id, enabled: !s.enabled }),
+          }, s.enabled ? "Off" : "On"),
+          el("button", {
+            class: "btn danger small",
+            onClick: () => {
+              if (!confirm("Delete schedule?")) return;
+              this._callService("remove_schedule", { schedule_id: s.id });
+            },
+          }, "✕"),
+        ]),
+      ]));
+    });
+    return card;
+  }
+
+  _openScheduleModal(existing) {
+    let name = existing ? existing.name : "";
+    let time = existing ? existing.time_hhmm : "06:00";
+    let dur = existing ? existing.duration_min : 60;
+    let mask = existing ? existing.days_mask : 127;
+    let target = existing && existing.target_temp != null ? existing.target_temp : "";
+    let enabled = existing ? !!existing.enabled : true;
+
+    const nameInput = el("input", { type: "text", value: name, placeholder: "Optional" });
+    nameInput.addEventListener("input", () => { name = nameInput.value; });
+    const timeInput = el("input", { type: "time", value: time });
+    timeInput.addEventListener("input", () => { time = timeInput.value; });
+    const durInput = el("input", { type: "number", min: "1", max: "720", value: String(dur) });
+    durInput.addEventListener("input", () => { dur = parseInt(durInput.value, 10) || 60; });
+    const targetInput = el("input", { type: "number", min: "20", max: "80", placeholder: "Off / blank", value: target });
+    targetInput.addEventListener("input", () => { target = targetInput.value; });
+    const enabledInput = el("input", { type: "checkbox" });
+    enabledInput.checked = enabled;
+    enabledInput.addEventListener("change", () => { enabled = enabledInput.checked; });
+
+    const days = el("div", { class: "days" });
+    DAY_LABELS.forEach((d, i) => {
+      const tog = el("div", { class: "day-toggle" + ((mask & DAY_BITS[i]) ? " on" : "") }, d);
+      tog.addEventListener("click", () => {
+        mask ^= DAY_BITS[i];
+        tog.classList.toggle("on", !!(mask & DAY_BITS[i]));
+      });
+      days.appendChild(tog);
+    });
+
+    const fields = [
+      el("label", { class: "field" }, [el("span", {}, "Name"), nameInput]),
+      el("div", { class: "field-row" }, [
+        el("label", { class: "field" }, [el("span", {}, "Time"), timeInput]),
+        el("label", { class: "field" }, [el("span", {}, "Duration (min)"), durInput]),
+      ]),
+      el("label", { class: "field" }, [el("span", {}, "Target temp (°C, optional)"), targetInput]),
+      el("div", { class: "field" }, [el("span", {}, "Days"), days]),
+      el("label", { class: "field" }, [el("span", {}, "Enabled"), enabledInput]),
+    ];
+
+    this._showModal(existing ? "Edit schedule" : "Add schedule", fields, async () => {
+      if (!mask) { this._toast("Pick at least one day", "error"); return false; }
+      const payload = {
+        time, days: daysFromMask(mask), duration_minutes: dur, name, enabled,
+      };
+      if (target !== "" && target != null) payload.target_temp = parseInt(target, 10);
+      if (existing) {
+        return await this._callService("update_schedule", Object.assign({ schedule_id: existing.id }, payload));
+      }
+      return await this._callService("add_schedule", payload);
+    });
+  }
+
+  _openSettings() {
+    const opts = this._state.options || {};
+    const target = el("input", { type: "number", min: "20", max: "80", value: String(opts.target_temp || 55) });
+    const wattage = el("input", { type: "number", min: "500", max: "10000", step: "100", value: String(opts.heater_wattage_w || 2400) });
+    const legEnabled = el("input", { type: "checkbox" }); legEnabled.checked = !!opts.legionella_enabled;
+    const legTemp = el("input", { type: "number", min: "55", max: "80", value: String(opts.legionella_temp || 60) });
+    const legDays = el("input", { type: "number", min: "1", max: "30", value: String(opts.legionella_days || 7) });
+
+    const fields = [
+      el("label", { class: "field" }, [el("span", {}, "Target temperature (°C)"), target]),
+      el("label", { class: "field" }, [el("span", {}, "Heater wattage (W) — for kWh estimates"), wattage]),
+      el("h4", { style: "margin:14px 0 6px;" }, "Anti-Legionella"),
+      el("label", { class: "field" }, [el("span", {}, "Enabled"), legEnabled]),
+      el("div", { class: "field-row" }, [
+        el("label", { class: "field" }, [el("span", {}, "Cycle temp (°C)"), legTemp]),
+        el("label", { class: "field" }, [el("span", {}, "Every N days"), legDays]),
+      ]),
+    ];
+
+    this._showModal("Settings", fields, async () => {
+      await this._saveOptions({
+        target_temp: parseInt(target.value, 10) || 55,
+        heater_wattage_w: parseInt(wattage.value, 10) || 2400,
+        legionella_enabled: legEnabled.checked,
+        legionella_temp: parseInt(legTemp.value, 10) || 60,
+        legionella_days: parseInt(legDays.value, 10) || 7,
+      });
+      return true;
+    });
+  }
+
+  _showModal(title, fields, onSave) {
+    this._modalRoot.innerHTML = "";
+    const modal = el("div", { class: "modal" }, [el("h3", {}, title)]);
+    fields.forEach(f => modal.appendChild(f));
+    const cancelBtn = el("button", { class: "btn", onClick: () => { this._modalRoot.innerHTML = ""; } }, "Cancel");
+    const saveBtn = el("button", { class: "btn primary", onClick: async () => {
+      saveBtn.disabled = true;
+      try {
+        const ok = await onSave();
+        if (ok) this._modalRoot.innerHTML = "";
+      } finally { saveBtn.disabled = false; }
+    } }, "Save");
+    modal.appendChild(el("div", { class: "modal-actions" }, [cancelBtn, saveBtn]));
+    const overlay = el("div", { class: "modal-overlay" }, modal);
+    overlay.addEventListener("click", e => { if (e.target === overlay) this._modalRoot.innerHTML = ""; });
+    this._modalRoot.appendChild(overlay);
+  }
+}
+
+if (!customElements.get("dud-shemesh-panel")) {
+  customElements.define("dud-shemesh-panel", DudPanel);
+}
