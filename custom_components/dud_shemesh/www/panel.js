@@ -372,6 +372,24 @@ class DudPanel extends HTMLElement {
     this.appendChild(this._modalRoot);
     this._refresh();
     this._refreshTimer = setInterval(() => this._refresh(), 5000);
+
+    // Subscribe to HA event bus for instant refresh on heater state changes
+    const events = [
+      "dud_shemesh_heat_started",
+      "dud_shemesh_heat_finished",
+      "dud_shemesh_target_reached",
+      "dud_shemesh_boost_extended",
+    ];
+    this._eventUnsubs = [];
+    events.forEach(ev => {
+      try {
+        const conn = this._hass.connection;
+        const promise = conn.subscribeEvents(() => {
+          setTimeout(() => this._refresh(), 100);
+        }, ev);
+        this._eventUnsubs.push(promise);
+      } catch (e) { /* fallback to polling */ }
+    });
   }
 
   _t(key, ...args) {

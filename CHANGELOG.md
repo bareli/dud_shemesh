@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4 — instant panel refresh on heater events
+
+- Panel subscribes to HA event bus (`dud_shemesh_heat_started`, `heat_finished`, `target_reached`, `boost_extended`) and refreshes UI immediately instead of waiting up to 5 s for the next poll. Closes the visible lag where a heater turned off externally still showed "STOP HEATING" until the next tick.
+
 ## 0.4.3 — sync with external heater state changes
 
 - Listens to the heater entity's state. When it transitions to off/closed/unavailable while integration thinks it's heating (e.g. user turned it off via a custom button or another automation), the active session is closed cleanly with status `external_stop`. Panel and reports stay in sync.
