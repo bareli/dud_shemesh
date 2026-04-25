@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.7 — live "Heating ends in" countdown
+
+- "Heating ends in" pill now ticks every second client-side instead of only refreshing on the 5 s WS poll. Format is `MM:SS` while under an hour, `Hh MMm` above. Server-client clock skew is corrected on every poll. When the timer hits 0, panel refreshes immediately to pick up the heat-finished state.
+
 ## 0.4.6 — subscribe to heater state changes via WS trigger
 
 - Panel registers a `subscribe_trigger` WS subscription on the configured heater entity. When the entity changes state, HA pushes a trigger message and the panel calls `_refresh()` 150 ms later. Doesn't depend on `set hass()` semantics or `panel_custom` reactive updates which proved unreliable.

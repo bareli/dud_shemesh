@@ -372,6 +372,7 @@ class DudPanel extends HTMLElement {
   }
   disconnectedCallback() {
     if (this._refreshTimer) clearInterval(this._refreshTimer);
+    if (this._tickTimer) clearInterval(this._tickTimer);
     if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
   }
 
@@ -387,6 +388,7 @@ class DudPanel extends HTMLElement {
     this.appendChild(this._modalRoot);
     this._refresh().then(() => this._subscribeHeaterState());
     this._refreshTimer = setInterval(() => this._refresh(), 5000);
+    this._tickTimer = setInterval(() => this._tickEndsIn(), 1000);
   }
 
   async _subscribeHeaterState() {
@@ -420,11 +422,43 @@ class DudPanel extends HTMLElement {
   async _refresh() {
     try {
       this._state = await this._hass.callWS({ type: "dud_shemesh/get_state" });
+      if (this._state && typeof this._state.now === "number") {
+        this._serverOffset = this._state.now - Math.floor(Date.now() / 1000);
+      }
       const focused = document.activeElement;
       if (focused && focused.tagName === "INPUT" && this.contains(focused)) return;
       this._render();
     } catch (e) {
       this._renderError(e);
+    }
+  }
+
+  _serverNow() {
+    return Math.floor(Date.now() / 1000) + (this._serverOffset || 0);
+  }
+
+  _formatRemaining(seconds) {
+    if (seconds <= 0) return "0 min";
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins < 60) return `${mins}:${secs.toString().padStart(2, "0")}`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}h ${m.toString().padStart(2, "0")}m`;
+  }
+
+  _tickEndsIn() {
+    if (!this._endsInValueEl || !this._endsInEndsAt) return;
+    if (!this._endsInValueEl.isConnected) {
+      this._endsInValueEl = null;
+      this._endsInEndsAt = 0;
+      return;
+    }
+    const remaining = Math.max(0, this._endsInEndsAt - this._serverNow());
+    this._endsInValueEl.textContent = this._formatRemaining(remaining);
+    if (remaining === 0) {
+      setTimeout(() => this._refresh(), 200);
     }
   }
 
@@ -620,11 +654,13 @@ class DudPanel extends HTMLElement {
     const side = el("div", { class: "side" });
     const active = status.active;
     if (active) {
-      const remaining = Math.max(0, active.ends_at - this._state.now);
-      const mins = Math.floor(remaining / 60);
+      const remaining = Math.max(0, active.ends_at - this._serverNow());
+      const valueEl = el("div", { class: "value" }, this._formatRemaining(remaining));
+      this._endsInValueEl = valueEl;
+      this._endsInEndsAt = active.ends_at;
       side.appendChild(el("div", { class: "side-item" }, [
         el("div", { class: "label" }, "Heating ends in"),
-        el("div", { class: "value" }, `${mins} min`),
+        valueEl,
       ]));
     } else if (status.estimated_minutes_to_target != null && status.estimated_minutes_to_target > 0) {
       side.appendChild(el("div", { class: "side-item" }, [
