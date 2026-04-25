@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.10 — subscribe to raw state_changed events
+
+- Replaced the `subscribe_trigger` WS message (which proved unreliable in `panel_custom`-hosted custom elements) with a direct `subscribeEvents("state_changed")` subscription. The callback filters by `entity_id` and triggers an immediate `_refresh()` whenever the heater entity changes — same mechanism Lovelace cards rely on, so panel state stays in sync with any external toggle.
+
 ## 0.4.9 — visibility handling + panel version pill
 
 - Panel registers a `visibilitychange` listener. When the browser tab returns to foreground (after being backgrounded, where browsers throttle `setInterval`), panel forces an immediate `_refresh()` plus a tick of the countdown so UI is current within a frame.

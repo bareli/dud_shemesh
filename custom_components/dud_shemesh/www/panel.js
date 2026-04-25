@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.4.9";
+const PANEL_VERSION = "0.4.10";
 const STYLES = `
 :host, :root {
   --ds-bg: var(--primary-background-color, #f4f6fa);
@@ -422,15 +422,14 @@ class DudPanel extends HTMLElement {
     const heaterId = this._state && this._state.options && this._state.options.heater_entity;
     if (!heaterId || !this._hass || !this._hass.connection) return;
     try {
-      this._heaterUnsub = await this._hass.connection.subscribeMessage(
-        (msg) => {
-          if (!msg || !msg.variables || !msg.variables.trigger) return;
-          setTimeout(() => this._refresh(), 150);
+      this._heaterUnsub = await this._hass.connection.subscribeEvents(
+        (ev) => {
+          if (!ev || !ev.data || ev.data.entity_id !== heaterId) return;
+          const newState = ev.data.new_state && ev.data.new_state.state;
+          this._lastHeaterState = newState;
+          this._refresh();
         },
-        {
-          type: "subscribe_trigger",
-          trigger: { platform: "state", entity_id: heaterId },
-        }
+        "state_changed"
       );
     } catch (e) {
       console.warn("[dud_shemesh] heater state subscription failed", e);
