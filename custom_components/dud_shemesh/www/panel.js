@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.4.10";
+const PANEL_VERSION = "0.4.11";
 const STYLES = `
 :host, :root {
   --ds-bg: var(--primary-background-color, #f4f6fa);
@@ -420,17 +420,24 @@ class DudPanel extends HTMLElement {
   async _subscribeHeaterState() {
     if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
     const heaterId = this._state && this._state.options && this._state.options.heater_entity;
-    if (!heaterId || !this._hass || !this._hass.connection) return;
+    console.log("[dud_shemesh] subscribing heater state for", heaterId);
+    if (!heaterId || !this._hass || !this._hass.connection) {
+      console.warn("[dud_shemesh] subscribe skipped — missing heater/hass/connection", { heaterId, hass: !!this._hass, conn: !!(this._hass && this._hass.connection) });
+      return;
+    }
     try {
       this._heaterUnsub = await this._hass.connection.subscribeEvents(
         (ev) => {
-          if (!ev || !ev.data || ev.data.entity_id !== heaterId) return;
+          if (!ev || !ev.data) return;
+          if (ev.data.entity_id !== heaterId) return;
           const newState = ev.data.new_state && ev.data.new_state.state;
+          console.log("[dud_shemesh] heater state_changed →", newState);
           this._lastHeaterState = newState;
           this._refresh();
         },
         "state_changed"
       );
+      console.log("[dud_shemesh] subscription active");
     } catch (e) {
       console.warn("[dud_shemesh] heater state subscription failed", e);
     }
@@ -474,6 +481,10 @@ class DudPanel extends HTMLElement {
   }
 
   _tickEndsIn() {
+    if (!this._tickLogged) {
+      this._tickLogged = true;
+      console.log("[dud_shemesh] tick alive, endsAt=", this._endsInEndsAt, "el=", !!this._endsInValueEl);
+    }
     if (!this._endsInValueEl || !this._endsInEndsAt) return;
     if (!this._endsInValueEl.isConnected) {
       this._endsInValueEl = null;

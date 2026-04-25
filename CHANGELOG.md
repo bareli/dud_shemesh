@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.11 — diagnostic logging for state subscription + tick
+
+- Adds `console.log` calls to verify the panel actually subscribes to the heater entity's `state_changed` events and that the 1-second tick handler is firing. Logs prefixed `[dud_shemesh]`. Diagnostic only — will be cleaned up once the upstream issue is identified.
+
 ## 0.4.10 — subscribe to raw state_changed events
 
 - Replaced the `subscribe_trigger` WS message (which proved unreliable in `panel_custom`-hosted custom elements) with a direct `subscribeEvents("state_changed")` subscription. The callback filters by `entity_id` and triggers an immediate `_refresh()` whenever the heater entity changes — same mechanism Lovelace cards rely on, so panel state stays in sync with any external toggle.
