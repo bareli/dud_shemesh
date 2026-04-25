@@ -22,6 +22,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     CONF_AUTO_COMFORT_WINDOWS,
     CONF_AUTO_PRE_HEAT_MARGIN_MIN,
+    CONF_BOOST_BUTTONS,
     CONF_FAIL_DETECTION_ENABLED,
     CONF_FAIL_DETECTION_MINUTES,
     CONF_FAIL_DETECTION_RISE,
@@ -33,11 +34,13 @@ from .const import (
     CONF_MODE,
     CONF_SOLAR_RISE_THRESHOLD,
     CONF_SOLAR_TRACK_MINUTES,
+    CONF_TARIFF_ILS_PER_KWH,
     CONF_TARGET_TEMP,
     CONF_TEMP_SENSOR,
     CONF_WEATHER_ENTITY,
     CONF_WEATHER_SKIP_STATES,
     DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN,
+    DEFAULT_BOOST_BUTTONS,
     DEFAULT_FAIL_DETECTION_MINUTES,
     DEFAULT_FAIL_DETECTION_RISE,
     DEFAULT_HEATER_WATTAGE,
@@ -46,6 +49,7 @@ from .const import (
     DEFAULT_MODE,
     DEFAULT_SOLAR_RISE_THRESHOLD,
     DEFAULT_SOLAR_TRACK_MINUTES,
+    DEFAULT_TARIFF_ILS_PER_KWH,
     DEFAULT_TARGET_TEMP,
     DEFAULT_WEATHER_SKIP_STATES,
     DOMAIN,
@@ -194,6 +198,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "fail_detection_rise": entry.options.get(CONF_FAIL_DETECTION_RISE, DEFAULT_FAIL_DETECTION_RISE),
         "solar_track_minutes": entry.options.get(CONF_SOLAR_TRACK_MINUTES, DEFAULT_SOLAR_TRACK_MINUTES),
         "solar_rise_threshold": entry.options.get(CONF_SOLAR_RISE_THRESHOLD, DEFAULT_SOLAR_RISE_THRESHOLD),
+        "boost_buttons": entry.options.get(CONF_BOOST_BUTTONS, DEFAULT_BOOST_BUTTONS),
+        "tariff_ils_per_kwh": entry.options.get(CONF_TARIFF_ILS_PER_KWH, DEFAULT_TARIFF_ILS_PER_KWH),
     }
 
     scheduler = DudScheduler(hass, store, options)
@@ -353,13 +359,21 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
             temp_unit = hass_inner.config.units.temperature_unit
         except Exception:
             temp_unit = "°C"
+        legionella_next = 0
+        if options.get("legionella_enabled"):
+            days = int(options.get("legionella_days", 7))
+            last = store.last_legionella
+            if last:
+                legionella_next = last + days * 86400
         connection.send_result(msg["id"], {
             "schedules": store.schedules,
-            "history": store.history[:200],
+            "history": store.history[:500],
             "active": scheduler.active,
             "options": options,
             "status": scheduler.now_status(),
             "temperature_unit": temp_unit,
+            "last_legionella": store.last_legionella,
+            "legionella_next_due": legionella_next,
             "now": int(time.time()),
         })
 
@@ -380,6 +394,8 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
         vol.Optional(CONF_FAIL_DETECTION_RISE): vol.Any(int, float, None),
         vol.Optional(CONF_SOLAR_TRACK_MINUTES): vol.Any(int, float, None),
         vol.Optional(CONF_SOLAR_RISE_THRESHOLD): vol.Any(int, float, None),
+        vol.Optional(CONF_BOOST_BUTTONS): vol.Any(str, None),
+        vol.Optional(CONF_TARIFF_ILS_PER_KWH): vol.Any(int, float, None),
     })
     @websocket_api.async_response
     async def _ws_update_options(hass_inner, connection, msg):
@@ -398,7 +414,8 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
                     CONF_WEATHER_ENTITY, CONF_WEATHER_SKIP_STATES,
                     CONF_AUTO_COMFORT_WINDOWS, CONF_AUTO_PRE_HEAT_MARGIN_MIN,
                     CONF_FAIL_DETECTION_ENABLED, CONF_FAIL_DETECTION_MINUTES, CONF_FAIL_DETECTION_RISE,
-                    CONF_SOLAR_TRACK_MINUTES, CONF_SOLAR_RISE_THRESHOLD):
+                    CONF_SOLAR_TRACK_MINUTES, CONF_SOLAR_RISE_THRESHOLD,
+                    CONF_BOOST_BUTTONS, CONF_TARIFF_ILS_PER_KWH):
             if key in msg:
                 new_options[key] = msg[key]
         hass_inner.config_entries.async_update_entry(entry, options=new_options)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — Reports tab + visibility polish
+
+- **Reports tab**: dedicated view with kWh, ₪ cost (configurable IEC tariff), on-time minutes for today / 7 days / 30 days; heater health average heat-rate °C/min trend; entire-history skip-reasons summary.
+- **Settings: Basic / Advanced split**. Basic shows target temp, boost-button durations, wattage, tariff. Advanced reveals comfort windows, weather entity, solar tracking, fail detection, anti-Legionella.
+- **Configurable boost durations**: comma-separated minutes (default `30,60,120`); also rendered as inline extend buttons while heating.
+- **Anti-Legionella next-due indicator**: side-pill on the gauge shows days until next sterilization, turns red when overdue.
+- **Pulsing gauge ring** while heating; smooth status transitions.
+- **Tariff for cost calc**: configurable ₪/kWh in Settings (default 0.62 reflecting common IEC daytime rate).
+- WS state now exposes `last_legionella` and `legionella_next_due` timestamps.
+
 ## 0.2.0 — smart layer
 
 - **Real Auto mode**: predictive pre-heat. Configure comfort windows like `06:30-08:00,19:00-21:00`. Integration estimates time-to-target and fires the element just-in-time before each window. Skipped if tank already at target, sun is gaining, or weather forecast is sunny.
