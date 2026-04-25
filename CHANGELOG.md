@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — appliance-grade Lovelace card
+
+- Lovelace card rebuilt to look like a real smart-dud controller: SVG gauge with target marker, status badge, side pills (ends-in / target), three large boost buttons (+30/+1h/+2h), STOP HEATING button while running, Auto/Schedule/Off mode toggle.
+- Cache-busted via existing `?v=<version>` resource URL — restart HA after update for fresh card.
+
 ## 0.1.0 — initial scaffold
 
 - HACS custom integration skeleton modeled on schedule_wizard.
