@@ -8,20 +8,50 @@ A Home Assistant **custom integration** that turns any smart switch + temperatur
 
 > Why: commercial smart-dud devices cost ₪400–800 and trap you in proprietary apps. This integration lives entirely in Home Assistant, runs on whatever relay + temp sensor you already have, and saves real electricity by skipping heat cycles when the tank is already warm enough.
 
-## Features (v0.1.0)
+## Features
 
-- **Big circular SVG gauge** showing current tank temperature with target marker.
-- Live **status badge**: `Ready` / `Heating` / `Waiting` / `Solar` / `Cold`.
-- One-tap **boost** buttons (`+30 min` / `+1 h` / `+2 h`).
+**Hero UI**
+- Big circular SVG gauge with **drag-to-set** target marker, live color (cool→hot), pulsing ring while heating.
+- Live **status badge**: Ready / Heating / Waiting / Solar / Cold.
+- Side pills for "Ends in", "Target", and **Anti-Legionella next-due**.
+
+**Control**
+- One-tap **boost** buttons; durations are configurable (default `30,60,120` min).
+- Boost while heating **extends** the active run instead of restarting it.
 - **Mode toggle**: Auto / Schedule / Off.
-- Recurring **schedules** (HH:MM + days + duration; optional target temperature).
-- **Skip-if-warm**: scheduled run is silently skipped when tank already at target.
-- **Auto-close** at target temperature OR after the scheduled duration, whichever comes first.
-- Optional **Anti-Legionella** weekly cycle (default 60 °C / 7 days).
-- Today **timeline** of heating activity.
-- Three **sensors**: status, tank temperature, estimated minutes to target.
-- Companion **Lovelace card** for dashboard embedding.
-- **English + Hebrew** UI strings.
+- Recurring **schedules** (HH:MM + days + duration, optional target temperature).
+- Companion Lovelace **`custom:dud-shemesh-card`** with the same look.
+
+**Smart layer**
+- **Real Auto mode**: predictive pre-heat for configured comfort windows (`06:30-08:00,19:00-21:00`).
+- **Skip-if-warm**: schedule run is skipped when tank already at target.
+- **Solar gain detection**: rolling 30-min temperature delta; auto-skips electric when sun is contributing.
+- **Weather-aware skip**: optional weather entity; sunny / clear-night → skip schedule.
+- **Soil-of-water-heaters style**: anti-Legionella weekly cycle to a configurable temp.
+
+**Reliability**
+- **Heat-not-rising detection**: verifies tank actually warms up after element turns on; alerts on element/breaker fault.
+
+**Visibility**
+- **Reports tab**: today / 7-day / 30-day on-time minutes, energy (kWh), cost (₪) using configurable IEC tariff. Heater health avg °C/min trend. Skip-reason summary. 24h temperature graph.
+- 3 sensors: status, tank temperature, minutes-to-target.
+
+**Triggers & convenience**
+- **Vacation mode**: pick an "active until" date; schedules suspended, tank held at anti-mold temp (default 30 °C).
+- **Calendar-driven one-off heat**: events on a chosen calendar with summary containing a keyword (`dud,water,חם,מים,דוד` default) fire heat runs. Description sets minutes / target temp.
+- **Voice via Assist**: `DudShemeshBoost` and `DudShemeshStop` intents — say "boost the water heater" to your HA Assist.
+- **Notifications**: pick `notify.*` services + which events push (heat_start/end, target reached, fail, skips, anti-Legionella).
+
+**Multi-instance**
+- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler. (Panel UI shows the first entry; multi-tank picker planned for v0.5.)
+
+**i18n**
+- English + Hebrew config strings, **right-to-left** panel layout when HA language is `he`.
+
+**Platform**
+- Single-instance config flow + options flow with selectors.
+- Domain-aware: `switch`, `input_boolean` for the heater relay.
+- Persistent storage via HA's `Store` helper.
 
 ## Install
 

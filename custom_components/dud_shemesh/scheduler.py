@@ -11,6 +11,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_time_change,
+    async_track_time_interval,
 )
 from homeassistant.util import dt as dt_util
 
@@ -63,6 +64,10 @@ class DudScheduler:
 
     async def async_start(self) -> None:
         self._unsub_minute = async_track_time_change(self.hass, self._on_minute, second=0)
+        self._unsub_calendar = async_track_time_interval(
+            self.hass, self._on_calendar_poll, timedelta(seconds=60)
+        )
+        self._known_calendar_keys = set()
         await self._restore_active_boost()
         LOG.info("dud_shemesh scheduler started")
 
@@ -70,6 +75,9 @@ class DudScheduler:
         if self._unsub_minute:
             self._unsub_minute()
             self._unsub_minute = None
+        if hasattr(self, "_unsub_calendar") and self._unsub_calendar:
+            self._unsub_calendar()
+            self._unsub_calendar = None
         if self._unsub_temp_check:
             self._unsub_temp_check()
             self._unsub_temp_check = None
@@ -112,6 +120,17 @@ class DudScheduler:
 
         mode = self.options.get("mode", MODE_SCHEDULE)
         if mode == MODE_OFF:
+            return
+
+        if self._vacation_active():
+            cur = self._read_temp()
+            hold = float(self.options.get("vacation_hold_temp") or 30)
+            if cur is not None and cur < hold - 2 and not self._active:
+                LOG.info("vacation hold: heating to %.0f°C", hold)
+                self.hass.async_create_task(self.async_start_heat(
+                    source="vacation_hold", duration_min=60, target_temp=int(hold),
+                    note="vacation anti-mold",
+                ))
             return
 
         if mode == MODE_AUTO:
@@ -220,6 +239,124 @@ class DudScheduler:
         states = [x.strip() for x in str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES)).split(",") if x.strip()]
         return s.state in states
 
+    async def _on_calendar_poll(self, _now) -> None:
+        if self._active or self._vacation_active() or self.options.get("mode") == MODE_OFF:
+            return
+        cal = (self.options.get("calendar_entity") or "").strip()
+        if not cal:
+            return
+        lookahead = int(self.options.get("calendar_lookahead_min", 10))
+        try:
+            response = await self.hass.services.async_call(
+                "calendar", "get_events",
+                {"entity_id": cal, "duration": {"minutes": lookahead}},
+                blocking=True, return_response=True,
+            )
+        except Exception as e:
+            LOG.warning("calendar get_events failed: %s", e)
+            return
+        cal_data = (response or {}).get(cal) or {}
+        events = cal_data.get("events", [])
+        if not events:
+            return
+        keywords_raw = self.options.get("calendar_keywords") or "dud,water"
+        keywords = [k.strip().lower() for k in str(keywords_raw).split(",") if k.strip()]
+        now_ts = int(time.time())
+        for ev in events:
+            summary = (ev.get("summary") or "").strip().lower()
+            if not summary:
+                continue
+            if keywords and not any(k in summary for k in keywords):
+                continue
+            start_str = ev.get("start", "")
+            try:
+                start_ts = self._parse_calendar_time(start_str)
+            except Exception:
+                continue
+            if start_ts > now_ts + lookahead * 60:
+                continue
+            if start_ts < now_ts - 60:
+                continue
+            key = f"{summary}|{start_str}"
+            if key in self._known_calendar_keys:
+                continue
+            self._known_calendar_keys.add(key)
+
+            description = (ev.get("description") or "").strip()
+            duration_min = 60
+            target = None
+            import re as _re
+            m_dur = _re.search(r"(\d{1,3})\s*(?:m|min|minutes?)", description.lower())
+            if m_dur:
+                duration_min = int(m_dur.group(1))
+            m_t = _re.search(r"(\d{2,3})\s*°?\s*c", description.lower())
+            if m_t:
+                target = int(m_t.group(1))
+
+            delay = max(0, start_ts - now_ts)
+            if delay == 0:
+                self.hass.async_create_task(self.async_start_heat(
+                    source="calendar", duration_min=duration_min,
+                    target_temp=target, note=key,
+                ))
+            else:
+                async_call_later(self.hass, delay, self._make_calendar_callback(duration_min, target, key))
+
+    def _make_calendar_callback(self, duration_min, target, key):
+        async def _fire(_now):
+            if self._active:
+                return
+            await self.async_start_heat(
+                source="calendar", duration_min=duration_min,
+                target_temp=target, note=key,
+            )
+        return _fire
+
+    @staticmethod
+    def _parse_calendar_time(value: str) -> int:
+        if not value:
+            raise ValueError("empty")
+        v = value.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(v)
+        except ValueError:
+            dt = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S")
+        if dt.tzinfo is None:
+            tz = getattr(dt_util, "get_default_time_zone", None)
+            tz = tz() if callable(tz) else getattr(dt_util, "DEFAULT_TIME_ZONE", None)
+            if tz is None:
+                from datetime import timezone as _tz
+                tz = _tz.utc
+            dt = dt.replace(tzinfo=tz)
+        return int(dt.timestamp())
+
+    def _vacation_active(self) -> int:
+        until = int(self.options.get("vacation_until") or 0)
+        if until <= 0 or until <= int(time.time()):
+            return 0
+        return until
+
+    async def _notify(self, event: str, title: str, message: str) -> None:
+        events = self.options.get("notify_events") or []
+        if isinstance(events, str):
+            events = [e.strip() for e in events.split(",") if e.strip()]
+        if event not in events:
+            return
+        targets = self.options.get("notify_targets") or []
+        if isinstance(targets, str):
+            targets = [t.strip() for t in targets.split(",") if t.strip()]
+        for t in targets:
+            if not t:
+                continue
+            try:
+                await self.hass.services.async_call(
+                    "notify", t,
+                    {"title": title, "message": message},
+                    blocking=False,
+                )
+            except Exception as e:
+                LOG.warning("notify %s failed: %s", t, e)
+
     def _read_temp_raw(self) -> Optional[float]:
         sensor = self.options.get("temp_sensor")
         if not sensor:
@@ -283,6 +420,10 @@ class DudScheduler:
             "target_temp": target_temp, "starting_temp": starting_temp,
             "note": note,
         })
+        self.hass.async_create_task(self._notify(
+            "heat_start", "Dud Shemesh",
+            f"Heating started ({source}, target {target_temp}°C, {duration_min} min)",
+        ))
         async_dispatcher_send(self.hass, SIGNAL_STATE_CHANGED)
 
         if self._unsub_close:
@@ -329,6 +470,10 @@ class DudScheduler:
                 "elapsed_min": int((time.time() - self._active.get("started_at", time.time())) / 60),
                 "source": self._active.get("source"),
             })
+            await self._notify(
+                "heat_not_rising", "Dud Shemesh — heater issue",
+                f"Tank not rising as expected (start {starting:.1f}°C, now {cur:.1f}°C). Check element / breaker.",
+            )
 
     @callback
     def _on_temp_check(self, _now) -> None:
@@ -349,6 +494,10 @@ class DudScheduler:
                 "temp": cur,
                 "target_temp": target,
             })
+            self.hass.async_create_task(self._notify(
+                "target_reached", "Dud Shemesh",
+                f"Target {target}°C reached",
+            ))
             self.hass.async_create_task(self._async_close("target_reached"))
 
     async def async_stop_heat(self, reason: str = "manual_stop") -> None:
@@ -387,8 +536,16 @@ class DudScheduler:
                 "starting_temp": active.get("starting_temp"),
                 "ending_temp": ending_temp,
             })
+            await self._notify(
+                "heat_end", "Dud Shemesh",
+                f"Heating ended ({status}). Tank: {ending_temp if ending_temp is not None else '—'}°C",
+            )
             if active.get("source") == "legionella" and status in ("completed", "target_reached"):
                 await self.store.async_set_last_legionella(int(time.time()))
+                await self._notify(
+                    "legionella_done", "Dud Shemesh",
+                    "Anti-Legionella cycle completed",
+                )
         async_dispatcher_send(self.hass, SIGNAL_STATE_CHANGED)
 
     async def async_boost(self, minutes: int) -> None:

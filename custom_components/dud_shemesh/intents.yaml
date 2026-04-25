@@ -1,0 +1,8 @@
+DudShemeshBoost:
+  description: Turn on the water heater for a duration.
+  slots:
+    minutes:
+      description: How long to boost.
+      required: false
+DudShemeshStop:
+  description: Turn off the water heater.

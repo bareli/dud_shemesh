@@ -32,6 +32,35 @@ DEFAULT_FAIL_DETECTION_RISE = 1.0
 DEFAULT_SOLAR_TRACK_MINUTES = 30
 DEFAULT_SOLAR_RISE_THRESHOLD = 1.0
 
+CONF_BOOST_BUTTONS = "boost_buttons"
+DEFAULT_BOOST_BUTTONS = "30,60,120"
+
+CONF_TARIFF_ILS_PER_KWH = "tariff_ils_per_kwh"
+DEFAULT_TARIFF_ILS_PER_KWH = 0.62
+
+CONF_NOTIFY_TARGETS = "notify_targets"
+CONF_NOTIFY_EVENTS = "notify_events"
+
+CONF_VACATION_UNTIL = "vacation_until"
+CONF_VACATION_HOLD_TEMP = "vacation_hold_temp"
+DEFAULT_VACATION_HOLD_TEMP = 30
+
+CONF_CALENDAR_ENTITY = "calendar_entity"
+CONF_CALENDAR_LOOKAHEAD_MIN = "calendar_lookahead_min"
+CONF_CALENDAR_KEYWORDS = "calendar_keywords"
+DEFAULT_CALENDAR_LOOKAHEAD_MIN = 10
+DEFAULT_CALENDAR_KEYWORDS = "dud,water,חם,מים,דוד"
+
+NOTIFY_EVENTS = (
+    "heat_start",
+    "heat_end",
+    "target_reached",
+    "heat_not_rising",
+    "skipped_solar",
+    "skipped_weather",
+    "legionella_done",
+)
+
 DEFAULT_TARGET_TEMP = 55
 DEFAULT_HEATER_WATTAGE = 2400
 DEFAULT_LEGIONELLA_TEMP = 60

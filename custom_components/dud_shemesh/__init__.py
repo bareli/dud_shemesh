@@ -22,7 +22,13 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     CONF_AUTO_COMFORT_WINDOWS,
     CONF_AUTO_PRE_HEAT_MARGIN_MIN,
+    CONF_BOOST_BUTTONS,
+    CONF_CALENDAR_ENTITY,
+    CONF_CALENDAR_KEYWORDS,
+    CONF_CALENDAR_LOOKAHEAD_MIN,
     CONF_FAIL_DETECTION_ENABLED,
+    CONF_NOTIFY_EVENTS,
+    CONF_NOTIFY_TARGETS,
     CONF_FAIL_DETECTION_MINUTES,
     CONF_FAIL_DETECTION_RISE,
     CONF_HEATER_ENTITY,
@@ -33,11 +39,17 @@ from .const import (
     CONF_MODE,
     CONF_SOLAR_RISE_THRESHOLD,
     CONF_SOLAR_TRACK_MINUTES,
+    CONF_TARIFF_ILS_PER_KWH,
+    CONF_VACATION_HOLD_TEMP,
+    CONF_VACATION_UNTIL,
     CONF_TARGET_TEMP,
     CONF_TEMP_SENSOR,
     CONF_WEATHER_ENTITY,
     CONF_WEATHER_SKIP_STATES,
     DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN,
+    DEFAULT_BOOST_BUTTONS,
+    DEFAULT_CALENDAR_KEYWORDS,
+    DEFAULT_CALENDAR_LOOKAHEAD_MIN,
     DEFAULT_FAIL_DETECTION_MINUTES,
     DEFAULT_FAIL_DETECTION_RISE,
     DEFAULT_HEATER_WATTAGE,
@@ -46,6 +58,9 @@ from .const import (
     DEFAULT_MODE,
     DEFAULT_SOLAR_RISE_THRESHOLD,
     DEFAULT_SOLAR_TRACK_MINUTES,
+    DEFAULT_TARIFF_ILS_PER_KWH,
+    DEFAULT_VACATION_HOLD_TEMP,
+    NOTIFY_EVENTS,
     DEFAULT_TARGET_TEMP,
     DEFAULT_WEATHER_SKIP_STATES,
     DOMAIN,
@@ -194,6 +209,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "fail_detection_rise": entry.options.get(CONF_FAIL_DETECTION_RISE, DEFAULT_FAIL_DETECTION_RISE),
         "solar_track_minutes": entry.options.get(CONF_SOLAR_TRACK_MINUTES, DEFAULT_SOLAR_TRACK_MINUTES),
         "solar_rise_threshold": entry.options.get(CONF_SOLAR_RISE_THRESHOLD, DEFAULT_SOLAR_RISE_THRESHOLD),
+        "boost_buttons": entry.options.get(CONF_BOOST_BUTTONS, DEFAULT_BOOST_BUTTONS),
+        "tariff_ils_per_kwh": entry.options.get(CONF_TARIFF_ILS_PER_KWH, DEFAULT_TARIFF_ILS_PER_KWH),
+        "notify_targets": entry.options.get(CONF_NOTIFY_TARGETS, []),
+        "notify_events": entry.options.get(CONF_NOTIFY_EVENTS, []),
+        "vacation_until": entry.options.get(CONF_VACATION_UNTIL, 0),
+        "vacation_hold_temp": entry.options.get(CONF_VACATION_HOLD_TEMP, DEFAULT_VACATION_HOLD_TEMP),
+        "calendar_entity": entry.options.get(CONF_CALENDAR_ENTITY, ""),
+        "calendar_lookahead_min": entry.options.get(CONF_CALENDAR_LOOKAHEAD_MIN, DEFAULT_CALENDAR_LOOKAHEAD_MIN),
+        "calendar_keywords": entry.options.get(CONF_CALENDAR_KEYWORDS, DEFAULT_CALENDAR_KEYWORDS),
     }
 
     scheduler = DudScheduler(hass, store, options)
@@ -327,10 +351,62 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _async_register_ws_commands(hass)
     await _async_register_panel(hass)
     await _async_register_card_resource(hass)
+    _async_register_intents(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
+
+
+_INTENT_REGISTERED_KEY = f"{DOMAIN}_intent_registered"
+
+
+def _async_register_intents(hass: HomeAssistant) -> None:
+    if hass.data.get(_INTENT_REGISTERED_KEY):
+        return
+    try:
+        from homeassistant.helpers import intent
+
+        class _BoostIntent(intent.IntentHandler):
+            intent_type = "DudShemeshBoost"
+            slot_schema = {vol.Optional("minutes"): vol.All(int, vol.Range(min=1, max=720))}
+            description = "Boost the water heater"
+            async def async_handle(self, intent_obj):
+                slots = self.async_validate_slots(intent_obj.slots)
+                minutes = int(slots.get("minutes", {}).get("value", 60))
+                domain_data = hass.data.get(DOMAIN, {})
+                if not domain_data:
+                    response = intent_obj.create_response()
+                    response.async_set_speech("Dud Shemesh integration not loaded.")
+                    return response
+                entry_id = next(iter(domain_data))
+                scheduler = domain_data[entry_id]["scheduler"]
+                await scheduler.async_boost(minutes)
+                response = intent_obj.create_response()
+                response.async_set_speech(f"Heater boosted for {minutes} minutes")
+                return response
+
+        class _StopIntent(intent.IntentHandler):
+            intent_type = "DudShemeshStop"
+            description = "Stop the water heater"
+            async def async_handle(self, intent_obj):
+                domain_data = hass.data.get(DOMAIN, {})
+                if not domain_data:
+                    response = intent_obj.create_response()
+                    response.async_set_speech("Dud Shemesh integration not loaded.")
+                    return response
+                entry_id = next(iter(domain_data))
+                scheduler = domain_data[entry_id]["scheduler"]
+                await scheduler.async_stop_heat(reason="voice")
+                response = intent_obj.create_response()
+                response.async_set_speech("Water heater stopped")
+                return response
+
+        intent.async_register(hass, _BoostIntent())
+        intent.async_register(hass, _StopIntent())
+        hass.data[_INTENT_REGISTERED_KEY] = True
+    except Exception as e:
+        LOG.debug("intents not registered: %s", e)
 
 
 def _async_register_ws_commands(hass: HomeAssistant) -> None:
@@ -353,13 +429,25 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
             temp_unit = hass_inner.config.units.temperature_unit
         except Exception:
             temp_unit = "°C"
+        legionella_next = 0
+        if options.get("legionella_enabled"):
+            days = int(options.get("legionella_days", 7))
+            last = store.last_legionella
+            if last:
+                legionella_next = last + days * 86400
+        notify_services = sorted(list((hass_inner.services.async_services().get("notify") or {}).keys()))
         connection.send_result(msg["id"], {
             "schedules": store.schedules,
-            "history": store.history[:200],
+            "history": store.history[:500],
             "active": scheduler.active,
             "options": options,
             "status": scheduler.now_status(),
             "temperature_unit": temp_unit,
+            "last_legionella": store.last_legionella,
+            "legionella_next_due": legionella_next,
+            "notify_services": notify_services,
+            "notify_events": list(NOTIFY_EVENTS),
+            "temp_samples": getattr(scheduler, "_temp_samples", []),
             "now": int(time.time()),
         })
 
@@ -380,6 +468,15 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
         vol.Optional(CONF_FAIL_DETECTION_RISE): vol.Any(int, float, None),
         vol.Optional(CONF_SOLAR_TRACK_MINUTES): vol.Any(int, float, None),
         vol.Optional(CONF_SOLAR_RISE_THRESHOLD): vol.Any(int, float, None),
+        vol.Optional(CONF_BOOST_BUTTONS): vol.Any(str, None),
+        vol.Optional(CONF_TARIFF_ILS_PER_KWH): vol.Any(int, float, None),
+        vol.Optional(CONF_NOTIFY_TARGETS): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(CONF_NOTIFY_EVENTS): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(CONF_VACATION_UNTIL): vol.Any(int, None),
+        vol.Optional(CONF_VACATION_HOLD_TEMP): vol.Any(int, float, None),
+        vol.Optional(CONF_CALENDAR_ENTITY): vol.Any(str, None),
+        vol.Optional(CONF_CALENDAR_LOOKAHEAD_MIN): vol.Any(int, None),
+        vol.Optional(CONF_CALENDAR_KEYWORDS): vol.Any(str, None),
     })
     @websocket_api.async_response
     async def _ws_update_options(hass_inner, connection, msg):
@@ -398,7 +495,11 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
                     CONF_WEATHER_ENTITY, CONF_WEATHER_SKIP_STATES,
                     CONF_AUTO_COMFORT_WINDOWS, CONF_AUTO_PRE_HEAT_MARGIN_MIN,
                     CONF_FAIL_DETECTION_ENABLED, CONF_FAIL_DETECTION_MINUTES, CONF_FAIL_DETECTION_RISE,
-                    CONF_SOLAR_TRACK_MINUTES, CONF_SOLAR_RISE_THRESHOLD):
+                    CONF_SOLAR_TRACK_MINUTES, CONF_SOLAR_RISE_THRESHOLD,
+                    CONF_BOOST_BUTTONS, CONF_TARIFF_ILS_PER_KWH,
+                    CONF_NOTIFY_TARGETS, CONF_NOTIFY_EVENTS,
+                    CONF_VACATION_UNTIL, CONF_VACATION_HOLD_TEMP,
+                    CONF_CALENDAR_ENTITY, CONF_CALENDAR_LOOKAHEAD_MIN, CONF_CALENDAR_KEYWORDS):
             if key in msg:
                 new_options[key] = msg[key]
         hass_inner.config_entries.async_update_entry(entry, options=new_options)
