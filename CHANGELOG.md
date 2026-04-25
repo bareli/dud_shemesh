@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 — sync with external heater state changes
+
+- Listens to the heater entity's state. When it transitions to off/closed/unavailable while integration thinks it's heating (e.g. user turned it off via a custom button or another automation), the active session is closed cleanly with status `external_stop`. Panel and reports stay in sync.
+
 ## 0.4.2 — README screenshots
 
 - Added 4 screenshots to README: panel control, panel reports, settings (advanced expanded), Lovelace card.

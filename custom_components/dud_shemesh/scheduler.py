@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
+    async_track_state_change_event,
     async_track_time_change,
     async_track_time_interval,
 )
@@ -68,8 +69,25 @@ class DudScheduler:
             self.hass, self._on_calendar_poll, timedelta(seconds=60)
         )
         self._known_calendar_keys = set()
+        heater = (self.options.get("heater_entity") or "").strip()
+        if heater:
+            self._unsub_heater_state = async_track_state_change_event(
+                self.hass, [heater], self._on_heater_state_change
+            )
         await self._restore_active_boost()
         LOG.info("dud_shemesh scheduler started")
+
+    @callback
+    def _on_heater_state_change(self, event) -> None:
+        if not self._active:
+            return
+        new_state = event.data.get("new_state")
+        if not new_state:
+            return
+        off_states = {"off", "closed", "unavailable"}
+        if new_state.state in off_states:
+            LOG.info("heater turned off externally — closing active session")
+            self.hass.async_create_task(self._async_close("external_stop"))
 
     async def async_stop(self) -> None:
         if self._unsub_minute:
@@ -78,6 +96,9 @@ class DudScheduler:
         if hasattr(self, "_unsub_calendar") and self._unsub_calendar:
             self._unsub_calendar()
             self._unsub_calendar = None
+        if hasattr(self, "_unsub_heater_state") and self._unsub_heater_state:
+            self._unsub_heater_state()
+            self._unsub_heater_state = None
         if self._unsub_temp_check:
             self._unsub_temp_check()
             self._unsub_temp_check = None
