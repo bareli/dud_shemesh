@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.8 — restart timers and subscriptions on panel re-attach
+
+- Fix: HA detaches and re-attaches the panel custom-element when navigating between sidebar entries. Previous code cleared timers in `disconnectedCallback` but the `_init` guard (`if (!_initialized)`) prevented re-setup on re-attach. Result: no 5 s poll, no 1 s countdown ticker, no heater state subscription — UI froze until full page reload (F5).
+- `connectedCallback` now restarts timers and re-subscribes to the heater entity even when already initialized; `_init` is only called the first time.
+
 ## 0.4.7 — live "Heating ends in" countdown
 
 - "Heating ends in" pill now ticks every second client-side instead of only refreshing on the 5 s WS poll. Format is `MM:SS` while under an hour, `Hh MMm` above. Server-client clock skew is corrected on every poll. When the timer hits 0, panel refreshes immediately to pick up the heat-finished state.

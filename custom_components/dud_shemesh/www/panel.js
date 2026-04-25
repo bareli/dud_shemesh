@@ -368,12 +368,25 @@ class DudPanel extends HTMLElement {
   set panel(v) { this._panel = v; }
 
   connectedCallback() {
-    if (this._hass && !this._initialized) this._init();
+    if (!this._hass) return;
+    if (!this._initialized) {
+      this._init();
+    } else {
+      this._startTimers();
+      this._refresh().then(() => this._subscribeHeaterState());
+    }
   }
   disconnectedCallback() {
-    if (this._refreshTimer) clearInterval(this._refreshTimer);
-    if (this._tickTimer) clearInterval(this._tickTimer);
+    this._stopTimers();
     if (this._heaterUnsub) { try { this._heaterUnsub(); } catch (e) {} this._heaterUnsub = null; }
+  }
+  _startTimers() {
+    if (!this._refreshTimer) this._refreshTimer = setInterval(() => this._refresh(), 5000);
+    if (!this._tickTimer) this._tickTimer = setInterval(() => this._tickEndsIn(), 1000);
+  }
+  _stopTimers() {
+    if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+    if (this._tickTimer) { clearInterval(this._tickTimer); this._tickTimer = null; }
   }
 
   _init() {
@@ -387,8 +400,7 @@ class DudPanel extends HTMLElement {
     this._modalRoot = el("div");
     this.appendChild(this._modalRoot);
     this._refresh().then(() => this._subscribeHeaterState());
-    this._refreshTimer = setInterval(() => this._refresh(), 5000);
-    this._tickTimer = setInterval(() => this._tickEndsIn(), 1000);
+    this._startTimers();
   }
 
   async _subscribeHeaterState() {
