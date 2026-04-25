@@ -28,9 +28,9 @@ set_mode:
       selector:
         select:
           options:
-            - auto
-            - schedule
-            - off
+            - "auto"
+            - "schedule"
+            - "off"
 
 set_target_temp:
   name: Set target temperature

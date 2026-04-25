@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — fix services.yaml validation
+
+- Quoted `"off"` in set_mode selector options. YAML 1.1 parses unquoted `off` as boolean false, which broke hassfest validation of services.yaml.
+
 ## 0.4.0 — notifications, vacation, drag-target, temp graph, calendar, voice, multi-tank, RTL
 
 - **Notifications**: pick one or more `notify.*` services and tick which events to push: heat_start, heat_end, target_reached, heat_not_rising, skipped_solar, skipped_weather, legionella_done.
