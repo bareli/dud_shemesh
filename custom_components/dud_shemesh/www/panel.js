@@ -411,7 +411,7 @@ const I18N = {
     s_notify_services: "Notify services", s_notify_when: "Send when", no_notify: "No notify.* services detected.",
     ev_heat_start: "Heat started", ev_heat_end: "Heat ended", ev_target_reached: "Target reached",
     ev_heat_not_rising: "Heater fault", ev_skipped_solar: "Skipped (solar)", ev_skipped_weather: "Skipped (weather)",
-    ev_legionella_done: "Anti-Legionella done", ev_safety_stop: "Safety stop", ev_sensor_stale: "Sensor offline",
+    ev_legionella_done: "Anti-Legionella done", ev_safety_stop: "Safety stop", ev_sensor_stale: "Sensor offline", ev_manual_on: "Turned on manually", ev_cold_warning: "Won't be hot in time",
     days_short: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
   },
   he: {
@@ -476,7 +476,7 @@ const I18N = {
     s_notify_services: "שירותי התראה", s_notify_when: "לשלוח כאשר", no_notify: "לא נמצאו שירותי notify.*",
     ev_heat_start: "חימום התחיל", ev_heat_end: "חימום הסתיים", ev_target_reached: "הגיע ליעד",
     ev_heat_not_rising: "תקלה בגוף החימום", ev_skipped_solar: "דולג (שמש)", ev_skipped_weather: "דולג (מזג אוויר)",
-    ev_legionella_done: "חיטוי הושלם", ev_safety_stop: "עצירת בטיחות", ev_sensor_stale: "חיישן לא זמין",
+    ev_legionella_done: "חיטוי הושלם", ev_safety_stop: "עצירת בטיחות", ev_sensor_stale: "חיישן לא זמין", ev_manual_on: "הודלק ידנית", ev_cold_warning: "לא יהיה חם בזמן",
     days_short: ["ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳", "א׳"],
   },
 };

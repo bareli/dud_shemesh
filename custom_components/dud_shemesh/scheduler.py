@@ -19,8 +19,11 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ACTION_PREFIX,
+    COLD_WARNING_LEAD_MIN,
     COLD_WATER_TEMP,
     DAY_BITS,
+    MESSAGES,
     DEFAULT_MANUAL_ON_MAX_MIN,
     DEFAULT_MAX_RUN_MIN,
     DEFAULT_MAX_TANK_TEMP,
@@ -68,10 +71,12 @@ RE_CAL_TEMP = re.compile(r"(\d{2,3})\s*°?\s*c\b")
 
 
 class DudScheduler:
-    def __init__(self, hass: HomeAssistant, store: DudStore, options: dict):
+    def __init__(self, hass: HomeAssistant, store: DudStore, options: dict, entry_id: str = ""):
         self.hass = hass
         self.store = store
         self.options = options
+        self.entry_id = entry_id
+        self._cold_warned: dict[str, int] = {}             # window key -> ready ts
         self._unsub_minute = None
         self._unsub_calendar = None
         self._unsub_heater_state = None
@@ -146,6 +151,11 @@ class DudScheduler:
             source="manual", duration_min=max_min,
             target_temp=int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP),
             note="adopted manual turn-on", heater_already_on=True,
+        ))
+        until = dt_util.as_local(dt_util.now() + timedelta(minutes=max_min)).strftime("%H:%M")
+        self.hass.async_create_task(self._notify(
+            "manual_on", self._msg("title_safety"), self._msg("manual_on", until=until),
+            actions=[("extend", 30, "a_keep_30"), ("stop", 0, "a_stop")],
         ))
 
     def _max_run_sec(self) -> int:
@@ -240,6 +250,8 @@ class DudScheduler:
                 ))
             return
 
+        self._maybe_cold_warning()
+
         # Only one run may start per minute tick; _active is set inside the task.
         started = False
         if mode == MODE_AUTO:
@@ -271,7 +283,8 @@ class DudScheduler:
                     starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
                 ))
                 self.hass.async_create_task(self._notify(
-                    "skipped_solar", "Dud Shemesh", "Scheduled heating skipped: solar gain detected",
+                    "skipped_solar", self._msg("title"), self._msg("skipped_solar", temp=self._fmt_temp()),
+                    actions=[("boost", int(sched.get("duration_min", 60)), "a_heat_now")],
                 ))
                 continue
             if self._weather_says_sunny():
@@ -281,7 +294,8 @@ class DudScheduler:
                     starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
                 ))
                 self.hass.async_create_task(self._notify(
-                    "skipped_weather", "Dud Shemesh", "Scheduled heating skipped: sunny weather",
+                    "skipped_weather", self._msg("title"), self._msg("skipped_weather", temp=self._fmt_temp()),
+                    actions=[("boost", int(sched.get("duration_min", 60)), "a_heat_now")],
                 ))
                 continue
             target_temp = sched.get("target_temp")
@@ -472,7 +486,50 @@ class DudScheduler:
             return 0
         return until
 
-    async def _notify(self, event: str, title: str, message: str) -> None:
+    def _lang(self) -> str:
+        return "he" if str(self.hass.config.language or "").lower().startswith("he") else "en"
+
+    def _msg(self, key: str, **kw) -> str:
+        text = MESSAGES[self._lang()].get(key) or MESSAGES["en"][key]
+        return text.format(**kw) if kw else text
+
+    def _fmt_temp(self, value: Optional[float] = None) -> str:
+        value = self._read_temp() if value is None else value
+        return "—" if value is None else f"{value:.0f}"
+
+    def _maybe_cold_warning(self) -> None:
+        """Warn once, COLD_WARNING_LEAD_MIN before a comfort window, if nothing will heat the tank."""
+        if self._active or not self._ha_started:
+            return
+        cur = self._read_temp()
+        target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+        if cur is None or cur >= target - 3:
+            return
+        now = dt_util.now()
+        now_ts = int(now.timestamp())
+        self._cold_warned = {k: ts for k, ts in self._cold_warned.items() if ts > now_ts - 86400}
+        planned = self.upcoming()
+        for d in (0, 1):
+            for hh, mm, label in self._parse_windows():
+                ready = (now + timedelta(days=d)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+                ready_ts = int(ready.timestamp())
+                minutes_to = (ready_ts - now_ts) / 60
+                key = f"{label}|{ready.date()}"
+                if not 0 < minutes_to <= COLD_WARNING_LEAD_MIN or key in self._cold_warned:
+                    continue
+                if any(now_ts <= u["at"] <= ready_ts for u in planned):
+                    continue
+                self._cold_warned[key] = ready_ts
+                self.hass.async_create_task(self._notify(
+                    "cold_warning", self._msg("title"),
+                    self._msg("cold_warning", temp=self._fmt_temp(cur), at=f"{hh:02d}:{mm:02d}"),
+                    actions=[("boost", 60, "a_boost_1h"), ("ignore", 0, "a_ignore")],
+                ))
+
+    async def _notify(
+        self, event: str, title: str, message: str,
+        actions: Optional[list[tuple[str, int, str]]] = None,
+    ) -> None:
         events = self.options.get("notify_events") or []
         if isinstance(events, str):
             events = [e.strip() for e in events.split(",") if e.strip()]
@@ -484,12 +541,19 @@ class DudScheduler:
         for t in targets:
             if not t:
                 continue
+            payload = {"title": title, "message": message}
+            # Only the companion app understands action buttons; other notifiers
+            # may reject unknown data keys.
+            if actions and t.startswith("mobile_app_"):
+                payload["data"] = {
+                    "tag": f"dud_shemesh_{event}",
+                    "actions": [
+                        {"action": f"{ACTION_PREFIX}:{cmd}:{arg}:{self.entry_id}", "title": self._msg(label)}
+                        for cmd, arg, label in actions
+                    ],
+                }
             try:
-                await self.hass.services.async_call(
-                    "notify", t,
-                    {"title": title, "message": message},
-                    blocking=False,
-                )
+                await self.hass.services.async_call("notify", t, payload, blocking=False)
             except Exception as e:
                 LOG.warning("notify %s failed: %s", t, e)
 
@@ -524,8 +588,7 @@ class DudScheduler:
             self._stale_notified = True
             LOG.warning("dud_shemesh: tank temperature sensor unavailable or stale; running time-only")
             self.hass.async_create_task(self._notify(
-                "sensor_stale", "Dud Shemesh — sensor",
-                "Tank temperature sensor is unavailable or stale. Heating runs by time only until it recovers.",
+                "sensor_stale", self._msg("title_sensor"), self._msg("sensor_stale"),
             ))
 
     async def async_start_heat(
@@ -588,8 +651,8 @@ class DudScheduler:
             "note": note,
         })
         self.hass.async_create_task(self._notify(
-            "heat_start", "Dud Shemesh",
-            f"Heating started ({source}, target {target_temp}°C, {duration_min} min)",
+            "heat_start", self._msg("title"),
+            self._msg("heat_start", source=source, target=target_temp if target_temp is not None else "—", minutes=duration_min),
         ))
         self._arm_run_timers()
         async_dispatcher_send(self.hass, SIGNAL_STATE_CHANGED)
@@ -619,8 +682,9 @@ class DudScheduler:
                 "source": self._active.get("source"),
             })
             await self._notify(
-                "heat_not_rising", "Dud Shemesh — heater issue",
-                f"Tank not rising as expected (start {starting:.1f}°C, now {cur:.1f}°C). Check element / breaker.",
+                "heat_not_rising", self._msg("title_fault"),
+                self._msg("heat_not_rising", start=f"{starting:.1f}", now=f"{cur:.1f}"),
+                actions=[("stop", 0, "a_stop")],
             )
 
     @callback
@@ -637,8 +701,8 @@ class DudScheduler:
         if cur >= max_temp:
             LOG.warning("dud_shemesh: tank at %.1f°C >= safety limit %.0f°C, stopping", cur, max_temp)
             self.hass.async_create_task(self._notify(
-                "safety_stop", "Dud Shemesh — safety",
-                f"Heater stopped: tank reached {cur:.0f}°C (limit {max_temp:.0f}°C).",
+                "safety_stop", self._msg("title_safety"),
+                self._msg("overtemp", temp=f"{cur:.0f}", limit=f"{max_temp:.0f}"),
             ))
             self.hass.async_create_task(self._async_close("safety_overtemp"))
             return
@@ -652,8 +716,7 @@ class DudScheduler:
                 "target_temp": target,
             })
             self.hass.async_create_task(self._notify(
-                "target_reached", "Dud Shemesh",
-                f"Target {target}°C reached",
+                "target_reached", self._msg("title"), self._msg("target_reached", target=target),
             ))
             self.hass.async_create_task(self._async_close("target_reached"))
 
@@ -684,8 +747,7 @@ class DudScheduler:
             await self._learn_heat_rate(active, status, actual_min, ending_temp)
             if active.get("source") == "manual" and status == "completed":
                 await self._notify(
-                    "safety_stop", "Dud Shemesh — safety",
-                    f"Heater was left on; turned off after {actual_min:.0f} min.",
+                    "safety_stop", self._msg("title_safety"), self._msg("left_on", minutes=f"{actual_min:.0f}"),
                 )
             await self.store.async_record_run(
                 active.get("source", "manual"),
@@ -706,17 +768,13 @@ class DudScheduler:
                 "ending_temp": ending_temp,
             })
             await self._notify(
-                "heat_end", "Dud Shemesh",
-                f"Heating ended ({status}). Tank: {ending_temp if ending_temp is not None else '—'}°C",
+                "heat_end", self._msg("title"), self._msg("heat_end", status=status, temp=self._fmt_temp(ending_temp)),
             )
             if active.get("source") == "legionella":
                 # Only a confirmed target temperature counts as a disinfection.
                 if status == "target_reached":
                     await self.store.async_set_last_legionella(now)
-                    await self._notify(
-                        "legionella_done", "Dud Shemesh",
-                        "Anti-Legionella cycle completed",
-                    )
+                    await self._notify("legionella_done", self._msg("title"), self._msg("legionella_done"))
                 else:
                     LOG.warning(
                         "dud_shemesh: anti-legionella run ended (%s) without reaching target; not recorded",

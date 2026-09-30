@@ -89,7 +89,64 @@ NOTIFY_EVENTS = (
     "legionella_done",
     "safety_stop",
     "sensor_stale",
+    "manual_on",
+    "cold_warning",
 )
+
+# Actionable notifications (mobile_app): "DUDSHEMESH:<cmd>:<arg>:<entry_id>"
+ACTION_PREFIX = "DUDSHEMESH"
+COLD_WARNING_LEAD_MIN = 60
+
+# Notification texts, {placeholders} filled by the scheduler.
+MESSAGES = {
+    "en": {
+        "title": "Dud Shemesh",
+        "title_safety": "Dud Shemesh — safety",
+        "title_fault": "Dud Shemesh — heater issue",
+        "title_sensor": "Dud Shemesh — sensor",
+        "heat_start": "Heating started ({source}, target {target}°C, {minutes} min)",
+        "heat_end": "Heating ended ({status}). Tank: {temp}°C",
+        "target_reached": "Target {target}°C reached",
+        "skipped_solar": "Scheduled heating skipped: the sun is heating the tank ({temp}°C).",
+        "skipped_weather": "Scheduled heating skipped: sunny weather ({temp}°C).",
+        "heat_not_rising": "Tank not rising as expected (start {start}°C, now {now}°C). Check element / breaker.",
+        "legionella_done": "Anti-Legionella cycle completed",
+        "overtemp": "Heater stopped: tank reached {temp}°C (limit {limit}°C).",
+        "left_on": "Heater was left on; turned off after {minutes} min.",
+        "manual_on": "Heater was switched on manually. It will turn off at {until}.",
+        "sensor_stale": "Tank temperature sensor is unavailable or stale. Heating runs by time only until it recovers.",
+        "cold_warning": "Tank is {temp}°C and nothing is planned; it won't be hot by {at}.",
+        "a_heat_now": "Heat now",
+        "a_boost_1h": "Boost 1 h",
+        "a_keep_30": "Keep 30 min",
+        "a_stop": "Turn off",
+        "a_ignore": "Ignore",
+    },
+    "he": {
+        "title": "דוד שמש",
+        "title_safety": "דוד שמש — בטיחות",
+        "title_fault": "דוד שמש — תקלה בגוף החימום",
+        "title_sensor": "דוד שמש — חיישן",
+        "heat_start": "החימום התחיל ({source}, יעד {target}°C, {minutes} דק׳)",
+        "heat_end": "החימום הסתיים ({status}). במיכל: {temp}°C",
+        "target_reached": "הגיע ליעד {target}°C",
+        "skipped_solar": "החימום המתוזמן דולג: השמש מחממת את המיכל ({temp}°C).",
+        "skipped_weather": "החימום המתוזמן דולג: מזג אוויר שמשי ({temp}°C).",
+        "heat_not_rising": "הטמפרטורה לא עולה כמצופה (התחלה {start}°C, עכשיו {now}°C). בדקו את הגוף / המפסק.",
+        "legionella_done": "מחזור חיטוי ליגיונלה הושלם",
+        "overtemp": "החימום הופסק: המיכל הגיע ל-{temp}°C (מגבלה {limit}°C).",
+        "left_on": "הדוד נשאר דולק; כובה אחרי {minutes} דק׳.",
+        "manual_on": "הדוד הודלק ידנית. הוא יכבה ב-{until}.",
+        "sensor_stale": "חיישן טמפרטורת המיכל לא זמין. החימום יפעל לפי זמן בלבד עד שיחזור.",
+        "cold_warning": "המיכל ב-{temp}°C ואין חימום מתוכנן; המים לא יהיו חמים עד {at}.",
+        "a_heat_now": "חמם עכשיו",
+        "a_boost_1h": "חימום שעה",
+        "a_keep_30": "עוד 30 דק׳",
+        "a_stop": "כבה",
+        "a_ignore": "התעלם",
+    },
+}
+
 
 DEFAULT_TARGET_TEMP = 55
 DEFAULT_HEATER_WATTAGE = 2400

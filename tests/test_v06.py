@@ -132,3 +132,64 @@ async def test_ws_list_entries_and_entry_scoped_state(hass, hass_ws_client):
     await ws.send_json({"id": 2, "type": "dud_shemesh/get_state", "entry_id": e2.entry_id})
     msg = await ws.receive_json()
     assert msg["result"]["entry_id"] == e2.entry_id and msg["result"]["status"]["target_temp"] == 48
+
+
+# 33
+def _capture_notify(hass, name):
+    calls = []
+
+    async def handler(call):
+        calls.append(dict(call.data))
+
+    hass.services.async_register("notify", name, handler)
+    return calls
+
+
+async def test_actionable_notifications_and_action_handling(hass, freezer):
+    await setup_heater(hass)
+    mobile = _capture_notify(hass, "mobile_app_phone")
+    other = _capture_notify(hass, "telegram")
+    entry = make_entry(hass, notify_targets=["mobile_app_phone", "telegram"],
+                       notify_events=["heat_not_rising", "manual_on"],
+                       fail_detection_enabled=True, fail_detection_minutes=5)
+    data = await setup_entry(hass, entry)
+    sch = data["scheduler"]
+    await sch.async_boost(60)
+    await _advance(hass, freezer, 6 * 60)  # temp did not rise -> fault notification
+
+    assert mobile and other
+    actions = mobile[-1]["data"]["actions"]
+    assert actions[0]["action"] == f"DUDSHEMESH:stop:0:{entry.entry_id}"
+    assert "data" not in other[-1]  # non mobile_app notifiers get plain text
+
+    hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]["action"]})
+    await hass.async_block_till_done()
+    assert sch.active is None
+
+    hass.bus.async_fire("mobile_app_notification_action", {"action": f"DUDSHEMESH:boost:25:{entry.entry_id}"})
+    await hass.async_block_till_done()
+    assert sch.active and sch.active["duration_min"] == 25
+
+
+async def test_cold_warning_once_before_window(hass, freezer):
+    from homeassistant.util import dt as dt_util
+    await setup_heater(hass)
+    calls = _capture_notify(hass, "mobile_app_phone")
+    ready = (dt_util.now() + timedelta(minutes=50)).replace(second=0, microsecond=0)
+    data = await setup_entry(hass, make_entry(
+        hass, mode="schedule", auto_comfort_windows=f"{ready:%H:%M}-{ready + timedelta(hours=1):%H:%M}",
+        notify_targets=["mobile_app_phone"], notify_events=["cold_warning"],
+    ))
+    await _advance(hass, freezer, 60)
+    await _advance(hass, freezer, 60)
+    warnings = [c for c in calls if "won't be hot" in c["message"]]
+    assert len(warnings) == 1
+    assert warnings[0]["data"]["actions"][0]["action"].startswith("DUDSHEMESH:boost:60:")
+
+    # a planned schedule before the window suppresses the warning
+    data["scheduler"]._cold_warned.clear()
+    calls.clear()
+    at = dt_util.now() + timedelta(minutes=10)
+    await data["store"].async_add_schedule("", 127, f"{at:%H:%M}", 30)
+    await _advance(hass, freezer, 60)
+    assert not [c for c in calls if "won't be hot" in c["message"]]

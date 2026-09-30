@@ -87,6 +87,7 @@ from .const import (
     SERVICE_SET_MODE,
     SERVICE_SET_TARGET,
     SERVICE_UPDATE_SCHEDULE,
+    ACTION_PREFIX,
 )
 from .entity import async_update_options
 from .scheduler import DudScheduler
@@ -254,7 +255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "tank_volume_l": entry.options.get(CONF_TANK_VOLUME_L, DEFAULT_TANK_VOLUME_L),
     }
 
-    scheduler = DudScheduler(hass, store, options)
+    scheduler = DudScheduler(hass, store, options, entry.entry_id)
     await scheduler.async_start()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
@@ -265,6 +266,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     _async_register_services(hass)
+    _async_register_notification_actions(hass)
     _async_register_ws_commands(hass)
     await _async_register_panel(hass)
     await _async_register_card_resource(hass)
@@ -436,6 +438,31 @@ def _async_register_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_LIST, _svc_list, schema=SCHEMA_ENTRY_ONLY,
         supports_response=SupportsResponse.ONLY,
     )
+
+
+ACTIONS_UNSUB_KEY = f"{DOMAIN}_actions_unsub"
+
+
+def _async_register_notification_actions(hass: HomeAssistant) -> None:
+    """Handle buttons pressed on Dud Shemesh mobile_app notifications."""
+    if hass.data.get(ACTIONS_UNSUB_KEY):
+        return
+
+    async def _on_action(event) -> None:
+        parts = str(event.data.get("action", "")).split(":")
+        if len(parts) != 4 or parts[0] != ACTION_PREFIX:
+            return
+        _, cmd, arg, entry_id = parts
+        try:
+            scheduler = _resolve_entry(hass, entry_id or None)["scheduler"]
+        except HomeAssistantError:
+            return
+        if cmd in ("boost", "extend"):
+            await scheduler.async_boost(max(1, min(720, int(arg or 60))))
+        elif cmd == "stop":
+            await scheduler.async_stop_heat("cancelled")
+
+    hass.data[ACTIONS_UNSUB_KEY] = hass.bus.async_listen("mobile_app_notification_action", _on_action)
 
 
 _INTENT_REGISTERED_KEY = f"{DOMAIN}_intent_registered"
@@ -628,6 +655,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for svc in ALL_SERVICES:
             if hass.services.has_service(DOMAIN, svc):
                 hass.services.async_remove(DOMAIN, svc)
+        if unsub := hass.data.pop(ACTIONS_UNSUB_KEY, None):
+            unsub()
         if hass.data.pop(PANEL_REGISTERED_KEY, False):
             with suppress(Exception):
                 async_remove_panel(hass, PANEL_URL_PATH)
