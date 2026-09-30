@@ -88,12 +88,20 @@ from .const import (
     SERVICE_SET_TARGET,
     SERVICE_UPDATE_SCHEDULE,
 )
+from .entity import async_update_options
 from .scheduler import DudScheduler
 from .storage import DudStore
 
 LOG = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SELECT,
+    Platform.SWITCH,
+    Platform.WATER_HEATER,
+]
 
 PANEL_URL_PATH = "dud-shemesh"
 PANEL_STATIC_URL = "/dud_shemesh_panel"
@@ -281,12 +289,6 @@ def _resolve_entry(hass: HomeAssistant, entry_id: str | None = None) -> dict:
     raise HomeAssistantError("Dud Shemesh integration not loaded")
 
 
-def _update_entry_options(hass: HomeAssistant, entry: ConfigEntry, patch: dict) -> dict:
-    new_options = {**entry.options, **patch}
-    hass.config_entries.async_update_entry(entry, options=new_options)
-    return new_options
-
-
 _ENTRY_ID = vol.Optional("entry_id")
 _INT_MINUTES = vol.All(vol.Coerce(int), vol.Range(min=1, max=720))
 _INT_TEMP = vol.All(vol.Coerce(int), vol.Range(min=20, max=80))
@@ -354,11 +356,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     async def _svc_set_mode(call: ServiceCall) -> None:
         data = _resolve_entry(hass, call.data.get("entry_id"))
-        _update_entry_options(hass, data["entry"], {CONF_MODE: call.data["mode"]})
+        async_update_options(hass, data["entry"], {CONF_MODE: call.data["mode"]})
 
     async def _svc_set_target(call: ServiceCall) -> None:
         data = _resolve_entry(hass, call.data.get("entry_id"))
-        _update_entry_options(hass, data["entry"], {CONF_TARGET_TEMP: call.data["temp"]})
+        async_update_options(hass, data["entry"], {CONF_TARGET_TEMP: call.data["temp"]})
 
     async def _svc_add_schedule(call: ServiceCall) -> ServiceResponse:
         data = _resolve_entry(hass, call.data.get("entry_id"))
@@ -590,7 +592,7 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
         if not connection.user.is_admin and set(patch) - WS_PUBLIC_OPTION_KEYS:
             connection.send_error(msg["id"], "unauthorized", "Only administrators can change these settings")
             return
-        new_options = _update_entry_options(hass_inner, data["entry"], patch)
+        new_options = async_update_options(hass_inner, data["entry"], patch)
         connection.send_result(msg["id"], {"options": new_options})
 
     websocket_api.async_register_command(hass, _ws_get_state)

@@ -3,12 +3,15 @@
     "step": {
       "user": {
         "title": "Dud Shemesh",
-        "description": "Pick the heater (relay) and the tank temperature sensor.",
+        "description": "Pick the heater relay and the tank temperature sensor. Everything else can be changed later in the Dud Shemesh panel.",
         "data": {
           "heater_entity": "Heater (electric element relay)",
           "temp_sensor": "Tank temperature sensor (optional)",
           "target_temp": "Target temperature",
-          "heater_wattage_w": "Element wattage"
+          "heater_wattage_w": "Element wattage",
+          "tank_volume_l": "Tank volume (litres, 0 = unknown)",
+          "tariff_ils_per_kwh": "Electricity price (₪/kWh)",
+          "auto_comfort_windows": "Hot water needed at (e.g. 06:30-08:00,19:00-21:00)"
         }
       }
     },
@@ -22,13 +25,91 @@
         "title": "Dud Shemesh options",
         "data": {
           "heater_entity": "Heater (electric element relay)",
-          "temp_sensor": "Tank temperature sensor",
+          "temp_sensor": "Tank temperature sensor (optional)",
           "target_temp": "Target temperature",
           "heater_wattage_w": "Element wattage",
+          "tank_volume_l": "Tank volume (litres, 0 = unknown)",
+          "tariff_ils_per_kwh": "Electricity price (₪/kWh)",
+          "auto_comfort_windows": "Hot water needed at (e.g. 06:30-08:00,19:00-21:00)",
           "mode": "Mode",
           "legionella_enabled": "Anti-Legionella cycle",
           "legionella_temp": "Anti-Legionella temperature",
           "legionella_days": "Anti-Legionella interval (days)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ready": "Ready",
+          "heating": "Heating",
+          "waiting": "Waiting",
+          "solar": "Solar",
+          "cold": "Cold"
+        }
+      },
+      "tank_temperature": {
+        "name": "Tank temperature"
+      },
+      "minutes_to_target": {
+        "name": "Minutes to target"
+      },
+      "energy": {
+        "name": "Energy"
+      }
+    },
+    "binary_sensor": {
+      "heating_active": {
+        "name": "Heating"
+      },
+      "solar_gaining": {
+        "name": "Solar gaining"
+      },
+      "sensor_problem": {
+        "name": "Temperature sensor problem"
+      }
+    },
+    "button": {
+      "boost": {
+        "name": "Boost {minutes} min"
+      },
+      "stop": {
+        "name": "Stop heating"
+      },
+      "legionella_now": {
+        "name": "Anti-Legionella now"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "auto": "Auto",
+          "schedule": "Schedule",
+          "off": "Off"
+        }
+      }
+    },
+    "switch": {
+      "heating": {
+        "name": "Heat now"
+      },
+      "vacation": {
+        "name": "Vacation"
+      },
+      "legionella": {
+        "name": "Anti-Legionella cycle"
+      }
+    },
+    "water_heater": {
+      "dud": {
+        "state": {
+          "auto": "Auto",
+          "schedule": "Schedule",
+          "off": "Off"
         }
       }
     }
