@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 — accessibility (#44)
+
+- Target gauge is a keyboard slider (`role="slider"`): arrows ±1 °C, PgUp/PgDn ±5, Home/End min/max, with a spoken value ("Target 55°C, tank 43°C"). −/+ buttons have real labels.
+- Keyboard focus survives the panel's and card's periodic refresh (it used to jump to the page start every 5 s).
+- Tabs, mode switch and Settings tabs follow the WAI-ARIA pattern: arrow keys / Home / End, roving tabindex.
+- Dialogs: focus moves into the dialog, Tab stays inside, Esc closes, focus returns to the button that opened it.
+- Toasts are announced (status / alert), the Today timeline and both charts have text descriptions, schedule switches are `role="switch"` with the schedule name, delete buttons are labelled.
+- `lang` set on panel and card so screen readers pronounce Hebrew correctly; visible focus rings on every control; animations off with `prefers-reduced-motion`.
+
 ## 0.6.0 — a real appliance in Home Assistant
 
 - **#28 Native entities**: one device per water heater with a `water_heater` entity (target, mode, away = vacation, on/off), boost / stop / anti-Legionella buttons, mode select, heat-now / vacation / anti-Legionella switches, heating / solar / sensor-problem binary sensors. Entity names in English and Hebrew.

@@ -99,6 +99,11 @@ const STYLES = `
 .error { color: var(--error-color, #e53935); font-size: 12px; margin-top: 8px; }
 .locked .boost-row, .locked .mode-toggle, .locked .target-row { pointer-events: none; opacity: .45; }
 .lock-note { font-size: 12px; color: #8e24aa; margin: 2px 0 6px; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--primary-color, #ff7a00); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .status-badge.heating { animation: none; }
+  * { transition: none !important; }
+}
 `;
 
 const I18N = {
@@ -114,6 +119,8 @@ const I18N = {
     next: "Next:", hot_by: "Hot by", today: "today", tomorrow: "tomorrow",
     dur_hm: (h, m) => `${h}h ${String(m).padStart(2, "0")}m`,
     e_title: "Title", e_entry: "Water heater", e_first: "First (default)", e_show_mode: "Show mode switch",
+    target_down: "Lower target", target_up: "Raise target", mode: "Mode",
+    gauge_alt: (c, t, u) => `Tank ${c}${u}, target ${t}${u}`,
   },
   he: {
     brand: "דוד שמש", ends_in: "מסתיים בעוד", to_target: "עד היעד", status: "מצב", target: "יעד",
@@ -127,6 +134,8 @@ const I18N = {
     next: "הבא:", hot_by: "חם עד", today: "היום", tomorrow: "מחר",
     dur_hm: (h, m) => `${h} ש׳ ${String(m).padStart(2, "0")} ד׳`,
     e_title: "כותרת", e_entry: "דוד", e_first: "הראשון (ברירת מחדל)", e_show_mode: "הצג בורר מצב",
+    target_down: "הורדת היעד", target_up: "העלאת היעד", mode: "מצב",
+    gauge_alt: (c, t, u) => `במיכל ${c}${u}, יעד ${t}${u}`,
   },
 };
 
@@ -349,6 +358,17 @@ class DudCard extends HTMLElement {
 
   _render() {
     if (!this._state) return;
+    // Rebuilt every few seconds; keep keyboard focus on the same control.
+    const active = this.shadowRoot.activeElement;
+    const focusKey = active ? active.getAttribute("data-focus-key") : null;
+    this._renderInner();
+    if (focusKey) {
+      const again = this.shadowRoot.querySelector(`[data-focus-key="${focusKey}"]`);
+      if (again) again.focus();
+    }
+  }
+
+  _renderInner() {
     const s = this._state.status || {};
     const opts = this._state.options || {};
     const tempUnit = this._state.temperature_unit || "°C";
@@ -359,6 +379,7 @@ class DudCard extends HTMLElement {
 
     const card = mk("div", "card");
     card.dir = langOf(this._hass) === "he" ? "rtl" : "ltr";
+    card.lang = langOf(this._hass);
     const locked = !!(s.shabbat && s.shabbat.locked);
     card.classList.toggle("locked", locked);
 
@@ -389,8 +410,10 @@ class DudCard extends HTMLElement {
     };
     minus.onclick = () => bump(-1);
     plus.onclick = () => bump(1);
-    minus.setAttribute("aria-label", "−");
-    plus.setAttribute("aria-label", "+");
+    minus.setAttribute("aria-label", this._t("target_down"));
+    plus.setAttribute("aria-label", this._t("target_up"));
+    minus.setAttribute("data-focus-key", "t-minus");
+    plus.setAttribute("data-focus-key", "t-plus");
     targetRow.append(minus, tval, plus);
     gaugeCol.appendChild(targetRow);
     gaugeRow.appendChild(gaugeCol);
@@ -428,16 +451,19 @@ class DudCard extends HTMLElement {
     const buttons = this._boostButtons(opts);
     if (active) {
       const stop = mk("button", "boost-btn cancel", this._t("stop"));
+      stop.setAttribute("data-focus-key", "stop");
       stop.onclick = () => this._call("cancel_boost");
       boostRow.appendChild(stop);
       buttons.forEach(mins => {
         const b = mk("button", "boost-btn extend", this._t("extend", this._boostLabel(mins)));
+        b.setAttribute("data-focus-key", "extend-" + mins);
         b.onclick = () => this._call("boost", { minutes: mins });
         boostRow.appendChild(b);
       });
     } else {
       buttons.forEach(mins => {
         const b = mk("button", "boost-btn", this._boostLabel(mins));
+        b.setAttribute("data-focus-key", "boost-" + mins);
         b.onclick = () => this._call("boost", { minutes: mins });
         boostRow.appendChild(b);
       });
@@ -446,9 +472,14 @@ class DudCard extends HTMLElement {
 
     if (this._config.show_mode !== false) {
       const modeWrap = mk("div", "mode-toggle");
+      modeWrap.setAttribute("role", "radiogroup");
+      modeWrap.setAttribute("aria-label", this._t("mode"));
       const mode = (opts.mode || "schedule").toLowerCase();
       ["auto", "schedule", "off"].forEach(key => {
         const pill = mk("button", "mode-pill" + (mode === key ? " active" : ""), this._t(key));
+        pill.setAttribute("role", "radio");
+        pill.setAttribute("aria-checked", mode === key ? "true" : "false");
+        pill.setAttribute("data-focus-key", "mode-" + key);
         pill.onclick = () => this._saveOptions({ mode: key });
         modeWrap.appendChild(pill);
       });
@@ -493,7 +524,8 @@ class DudCard extends HTMLElement {
       : "#e53935";
     const [tx, ty] = polar(targetAngle, r);
 
-    return svgEl("svg", { viewBox: "0 0 180 160", style: "width:160px;height:auto;direction:ltr;" }, [
+    return svgEl("svg", { viewBox: "0 0 180 160", style: "width:160px;height:auto;direction:ltr;", role: "img",
+      "aria-label": this._t("gauge_alt", cur != null ? Math.round(cur) : "—", target, tempUnit) }, [
       svgEl("path", { d: arcPath(startAngle, endAngle, r), fill: "none", stroke: "rgba(0,0,0,0.08)", "stroke-width": sw, "stroke-linecap": "round" }),
       svgEl("path", { d: arcPath(startAngle, valueAngle, r), fill: "none", stroke: tempColor, "stroke-width": sw, "stroke-linecap": "round" }),
       svgEl("circle", { cx: tx, cy: ty, r: 5, fill: "var(--primary-text-color)" }),

@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.6.0";
+const PANEL_VERSION = "0.6.1";
 const STYLES = `
 :host, :root {
   --ds-bg: var(--primary-background-color, #f4f6fa);
@@ -338,6 +338,14 @@ const STYLES = `
 .locked .boost-row, .locked .mode-toggle, .locked .target-row, .locked .schedule-card button,
 .locked .schedule-card .switch, .locked circle[data-drag] { pointer-events: none; opacity: .45; }
 .shabbat-banner { background: rgba(156,39,176,0.08); border-color: rgba(156,39,176,0.3); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+[tabindex]:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
+.switch input:focus-visible + span { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
+svg[role=slider] { cursor: pointer; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) {
+  .gauge-arc-active, .status-badge.heating { animation: none; }
+  * { transition: none !important; }
+}
 button:focus-visible, .nav-tab:focus-visible, .mode-pill:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
 `;
 
@@ -361,7 +369,11 @@ function el(tag, attrs = {}, children = []) {
 
 const I18N = {
   en: {
-    brand: "Dud Shemesh", tank: "Water heater", control: "Control", reports: "Reports", settings: "Settings",
+    brand: "Dud Shemesh", tank: "Water heater",
+    tank_now: (v, u) => `tank ${v}${u}`, target_down: "Lower target", target_up: "Raise target",
+    delete_schedule: "Delete schedule", tl_none: "no heating",
+    chart30_alt: (e, a) => `Last 30 days: ${e} kWh electric heating, ${a} kWh avoided`,
+    temp_chart_alt: (lo, hi, now) => `Tank temperature between ${lo} and ${hi}°C, now ${now}°C`, control: "Control", reports: "Reports", settings: "Settings",
     target: "Target", target_val: (v, u) => `Target ${v}${u}`, mode: "Mode",
     auto: "Auto", schedule: "Schedule", off: "Off",
     mode_hint_auto: "Heats ahead of your comfort windows and runs your schedules, skipping when the sun is doing the job.",
@@ -437,7 +449,11 @@ const I18N = {
     days_short: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
   },
   he: {
-    brand: "דוד שמש", tank: "דוד", control: "בקרה", reports: "דוחות", settings: "הגדרות",
+    brand: "דוד שמש", tank: "דוד",
+    tank_now: (v, u) => `במיכל ${v}${u}`, target_down: "הורדת היעד", target_up: "העלאת היעד",
+    delete_schedule: "מחיקת לוח זמנים", tl_none: "ללא חימום",
+    chart30_alt: (e, a) => `30 הימים האחרונים: ${e} קוט״ש חימום חשמלי, ${a} קוט״ש נחסכו`,
+    temp_chart_alt: (lo, hi, now) => `טמפרטורת המיכל בין ${lo} ל-${hi}°C, עכשיו ${now}°C`, control: "בקרה", reports: "דוחות", settings: "הגדרות",
     target: "יעד", target_val: (v, u) => `יעד ${v}${u}`, mode: "מצב",
     auto: "אוטומטי", schedule: "לוח זמנים", off: "כבוי",
     mode_hint_auto: "מחמם מראש לפני חלונות הנוחות ומריץ את לוחות הזמנים, ומדלג כשהשמש עושה את העבודה.",
@@ -566,6 +582,32 @@ function numOr(value, fallback, parse = parseFloat) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// Arrow / Home / End navigation for role=tablist and role=radiogroup (roving tabindex).
+function arrowNav(container, rtl) {
+  const items = () => [...container.querySelectorAll('[role="tab"],[role="radio"]')];
+  const sync = () => items().forEach(b => b.setAttribute("tabindex",
+    (b.getAttribute("aria-selected") || b.getAttribute("aria-checked")) === "true" ? "0" : "-1"));
+  sync();
+  container.addEventListener("keydown", (ev) => {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (i < 0) return;
+    const fwd = rtl ? "ArrowLeft" : "ArrowRight", back = rtl ? "ArrowRight" : "ArrowLeft";
+    let j = null;
+    if (ev.key === fwd || ev.key === "ArrowDown") j = (i + 1) % list.length;
+    else if (ev.key === back || ev.key === "ArrowUp") j = (i - 1 + list.length) % list.length;
+    else if (ev.key === "Home") j = 0;
+    else if (ev.key === "End") j = list.length - 1;
+    if (j == null) return;
+    ev.preventDefault();
+    list[j].focus();
+    list[j].click();
+  });
+  return container;
+}
+
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+
 function daysFromMask(mask) {
   return DAYS.filter((_, i) => mask & DAY_BITS[i]);
 }
@@ -644,9 +686,9 @@ class DudPanel extends HTMLElement {
     this.appendChild(style);
     const lang = (this._hass && (this._hass.language || (this._hass.locale && this._hass.locale.language))) || "en";
     this._lang = lang.toLowerCase().startsWith("he") ? "he" : "en";
-    this._app = el("div", { class: "app", dir: this._lang === "he" ? "rtl" : "ltr" });
+    this._app = el("div", { class: "app", dir: this._lang === "he" ? "rtl" : "ltr", lang: this._lang });
     this.appendChild(this._app);
-    this._modalRoot = el("div", { dir: this._lang === "he" ? "rtl" : "ltr" });
+    this._modalRoot = el("div", { dir: this._lang === "he" ? "rtl" : "ltr", lang: this._lang });
     this.appendChild(this._modalRoot);
     this._loadEntries().then(() => this._refresh()).then(() => this._subscribeHeaterState());
     this._startTimers();
@@ -794,7 +836,7 @@ class DudPanel extends HTMLElement {
   }
 
   _toast(msg, kind = "") {
-    const t = el("div", { class: "toast " + kind }, msg);
+    const t = el("div", { class: "toast " + kind, role: kind === "error" ? "alert" : "status", "aria-live": kind === "error" ? "assertive" : "polite" }, msg);
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 2500);
   }
@@ -823,6 +865,17 @@ class DudPanel extends HTMLElement {
 
   _render() {
     if (!this._state) return;
+    // The panel is rebuilt every few seconds; put keyboard focus back where it was.
+    const active = document.activeElement;
+    const focusKey = active && this._app.contains(active) ? active.getAttribute("data-focus-key") : null;
+    this._renderInner();
+    if (focusKey) {
+      const again = this._app.querySelector(`[data-focus-key="${focusKey}"]`);
+      if (again) again.focus();
+    }
+  }
+
+  _renderInner() {
     const opts = this._state.options || {};
     const status = this._state.status || {};
     this._app.innerHTML = "";
@@ -835,7 +888,7 @@ class DudPanel extends HTMLElement {
       el("div", { style: "display:flex;align-items:center;gap:6px;" }, [
         this._renderTankPicker(),
         (this._hass.user && this._hass.user.is_admin === false) ? null
-          : el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: this._t("settings"), "aria-label": this._t("settings") }, "⚙"),
+          : el("button", { class: "icon-btn", "data-focus-key": "gear", onClick: () => this._openSettings(), title: this._t("settings"), "aria-label": this._t("settings") }, "⚙"),
       ]),
     ]));
 
@@ -843,11 +896,11 @@ class DudPanel extends HTMLElement {
     [["control", this._t("control")], ["reports", this._t("reports")]].forEach(([key, label]) => {
       tabs.appendChild(el("button", {
         class: "nav-tab" + (this._view === key ? " active" : ""),
-        role: "tab", "aria-selected": this._view === key ? "true" : "false",
+        role: "tab", "aria-selected": this._view === key ? "true" : "false", "data-focus-key": "view-" + key,
         onClick: () => { this._view = key; this._render(); },
       }, label));
     });
-    this._app.appendChild(tabs);
+    this._app.appendChild(arrowNav(tabs, this._lang === "he"));
 
     if (this._view === "reports") {
       this._app.appendChild(this._renderReports(this._state.history || []));
@@ -889,7 +942,7 @@ class DudPanel extends HTMLElement {
 
   _renderTankPicker() {
     if (!this._entries || this._entries.length < 2) return null;
-    const sel = el("select", { class: "tank-picker", "aria-label": this._t("tank") });
+    const sel = el("select", { class: "tank-picker", "aria-label": this._t("tank"), "data-focus-key": "tank" });
     this._entries.forEach(e => {
       const o = el("option", { value: e.entry_id }, e.title);
       if (e.entry_id === this._entryId) o.selected = true;
@@ -959,8 +1012,10 @@ class DudPanel extends HTMLElement {
       : cur < 60 ? "#ff9800"
       : "#e53935";
 
-    const svg = svgEl("svg", { viewBox: "0 0 260 230", style: "width:100%;max-width:260px;height:auto;direction:ltr;", role: "img",
-      "aria-label": `${cur != null ? Math.round(cur) : "—"}${tempUnit}, ${this._t("target_val", target, tempUnit)}` }, [
+    const svg = svgEl("svg", { viewBox: "0 0 260 230", style: "width:100%;max-width:260px;height:auto;direction:ltr;",
+      role: "slider", tabindex: "0", "data-focus-key": "gauge", "aria-label": this._t("target"),
+      "aria-valuemin": minTemp, "aria-valuemax": maxTemp, "aria-valuenow": target,
+      "aria-valuetext": `${this._t("target_val", target, tempUnit)}, ${this._t("tank_now", cur != null ? Math.round(cur) : "—", tempUnit)}` }, [
       svgEl("path", { d: arcPath(startAngle, endAngle, r), fill: "none", stroke: "rgba(0,0,0,0.08)", "stroke-width": sw, "stroke-linecap": "round" }),
       svgEl("path", { d: arcPath(startAngle, valueAngle, r), fill: "none", stroke: tempColor, "stroke-width": sw, "stroke-linecap": "round", class: isHeating ? "gauge-arc-active" : "" }),
       svgEl("circle", {
@@ -986,6 +1041,8 @@ class DudPanel extends HTMLElement {
       const dot = svg.querySelector('circle[data-drag="target"]');
       const [nx, ny] = polar(startAngle + angleSpan * ((nv - minTemp) / (maxTemp - minTemp)), r);
       if (dot) { dot.setAttribute("cx", nx); dot.setAttribute("cy", ny); }
+      svg.setAttribute("aria-valuenow", nv);
+      svg.setAttribute("aria-valuetext", `${this._t("target_val", nv, tempUnit)}, ${this._t("tank_now", cur != null ? Math.round(cur) : "—", tempUnit)}`);
     };
     const commitSoon = () => {
       clearTimeout(this._pendingTargetTimer);
@@ -1000,9 +1057,9 @@ class DudPanel extends HTMLElement {
       el("div", { class: "gauge-wrap" }, svg),
       el("span", { class: "status-badge " + statusKey }, badgeText),
       el("div", { class: "target-row" }, [
-        el("button", { class: "round-btn", "aria-label": "−", onClick: () => { setTarget(this._pendingTarget != null ? this._pendingTarget - 1 : target - 1); commitSoon(); } }, "−"),
+        el("button", { class: "round-btn", "aria-label": this._t("target_down"), "data-focus-key": "t-minus", onClick: () => { setTarget(this._pendingTarget != null ? this._pendingTarget - 1 : target - 1); commitSoon(); } }, "−"),
         targetVal,
-        el("button", { class: "round-btn", "aria-label": "+", onClick: () => { setTarget(this._pendingTarget != null ? this._pendingTarget + 1 : target + 1); commitSoon(); } }, "+"),
+        el("button", { class: "round-btn", "aria-label": this._t("target_up"), "data-focus-key": "t-plus", onClick: () => { setTarget(this._pendingTarget != null ? this._pendingTarget + 1 : target + 1); commitSoon(); } }, "+"),
       ]),
     ]);
 
@@ -1021,6 +1078,18 @@ class DudPanel extends HTMLElement {
       if (a > endAngle) normalized = (a - endAngle) <= (startAngle + 360 - a) ? endAngle : startAngle;
       setTarget(Math.round(minTemp + ((normalized - startAngle) / angleSpan) * (maxTemp - minTemp)));
     };
+    svg.addEventListener("keydown", (ev) => {
+      const now = this._pendingTarget != null ? this._pendingTarget : target;
+      const steps = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 5, PageDown: -5 };
+      let next = null;
+      if (ev.key in steps) next = now + steps[ev.key];
+      else if (ev.key === "Home") next = minTemp;
+      else if (ev.key === "End") next = maxTemp;
+      if (next == null) return;
+      ev.preventDefault();
+      setTarget(next);
+      commitSoon();
+    });
     this._dragging = false;
     svg.addEventListener("pointerdown", (ev) => {
       if (ev.target.getAttribute("data-drag") !== "target") return;
@@ -1148,7 +1217,8 @@ class DudPanel extends HTMLElement {
     bars.push(svgEl("text", { x: pad, y: 12, "font-size": "11", fill: "var(--ds-muted)" }, document.createTextNode(`${maxK.toFixed(1)} kWh`)));
     root.appendChild(el("div", { class: "card" }, [
       el("div", { class: "section-title", style: "margin-top:0;" }, this._t("last30_chart")),
-      svgEl("svg", { viewBox: `0 0 ${W} ${H}`, style: "width:100%;height:auto;direction:ltr;" }, bars),
+      svgEl("svg", { viewBox: `0 0 ${W} ${H}`, style: "width:100%;height:auto;direction:ltr;", role: "img",
+        "aria-label": this._t("chart30_alt", days.reduce((a, x) => a + x.elec, 0).toFixed(1), days.reduce((a, x) => a + x.avoided, 0).toFixed(1)) }, bars),
       el("div", { class: "legend" }, [
         el("span", {}, [el("i", { style: "background:var(--ds-hot)" }), this._t("lg_electric")]),
         el("span", {}, [el("i", { style: "background:var(--ds-solar)" }), this._t("lg_avoided")]),
@@ -1226,7 +1296,7 @@ class DudPanel extends HTMLElement {
     const hours = this._chartHours || 24;
     const card = el("div", { class: "card" });
     const pick = el("div", { class: "chips", style: "margin-inline-start:auto;" }, [24, 168].map(h =>
-      el("button", { type: "button", class: "btn small" + (h === hours ? " primary" : ""),
+      el("button", { type: "button", class: "btn small" + (h === hours ? " primary" : ""), "aria-pressed": h === hours ? "true" : "false", "data-focus-key": "range-" + h,
         onClick: () => { this._chartHours = h; this._render(); } }, h === 24 ? this._t("range_24h") : this._t("range_7d"))));
     card.appendChild(el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px;" },
       [el("div", { class: "section-title", style: "margin:0;" }, this._t("temp_chart")), pick]));
@@ -1282,7 +1352,8 @@ class DudPanel extends HTMLElement {
       kids.push(svgEl("text", { x: sx(t), y: h - 6, "font-size": "10", fill: "var(--ds-muted)", "text-anchor": "middle" }, document.createTextNode(label)));
     }
     return el("div", {}, [
-      svgEl("svg", { viewBox: `0 0 ${w} ${h}`, style: "width:100%;height:auto;direction:ltr;" }, kids),
+      svgEl("svg", { viewBox: `0 0 ${w} ${h}`, style: "width:100%;height:auto;direction:ltr;", role: "img",
+        "aria-label": this._t("temp_chart_alt", minY, maxY, pts[pts.length - 1][1].toFixed(0)) }, kids),
       el("div", { class: "legend" }, [
         el("span", {}, [el("i", { style: "background:var(--ds-primary)" }), this._t("lg_tank")]),
         el("span", {}, [el("i", { style: "background:rgba(255,152,0,0.35)" }), this._t("lg_heated")]),
@@ -1302,16 +1373,16 @@ class DudPanel extends HTMLElement {
     const buttons = this._parseBoostButtons(opts);
     if (status.active) {
       row.appendChild(el("button", {
-        class: "boost-btn cancel",
+        class: "boost-btn cancel", "data-focus-key": "stop",
         onClick: () => this._callService("cancel_boost", {}),
       }, this._t("stop_heating")));
       buttons.forEach(mins => row.appendChild(el("button", {
-        class: "boost-btn extend",
+        class: "boost-btn extend", "data-focus-key": "extend-" + mins,
         onClick: () => this._callService("boost", { minutes: mins }),
       }, this._t("extend", this._boostLabel(mins)))));
     } else {
       buttons.forEach(mins => row.appendChild(el("button", {
-        class: "boost-btn",
+        class: "boost-btn", "data-focus-key": "boost-" + mins,
         onClick: () => this._callService("boost", { minutes: mins }),
       }, this._boostLabel(mins))));
     }
@@ -1333,11 +1404,11 @@ class DudPanel extends HTMLElement {
     ["auto", "schedule", "off"].forEach(key => {
       wrap.appendChild(el("button", {
         class: "mode-pill" + (mode === key ? " active" : ""),
-        role: "radio", "aria-checked": mode === key ? "true" : "false",
+        role: "radio", "aria-checked": mode === key ? "true" : "false", "data-focus-key": "mode-" + key,
         onClick: () => this._saveOptions({ mode: key }),
       }, this._t(key)));
     });
-    card.appendChild(wrap);
+    card.appendChild(arrowNav(wrap, this._lang === "he"));
     card.appendChild(el("div", { class: "mode-hint" }, this._t("mode_hint_" + mode)));
     return card;
   }
@@ -1363,7 +1434,19 @@ class DudPanel extends HTMLElement {
     });
     if (status.active) paint(status.active.started_at, status.active.ends_at, "heating");
     // The time axis always reads left to right, also in Hebrew.
-    const tl = el("div", { class: "timeline", dir: "ltr" });
+    const hhmm = slot => `${String(Math.floor(slot / 2)).padStart(2, "0")}:${slot % 2 ? "30" : "00"}`;
+    const spans = [];
+    segs.forEach((tone, i) => {
+      if (tone === "idle") return;
+      const last = spans[spans.length - 1];
+      if (last && last.tone === tone && last.end === i) last.end = i + 1;
+      else spans.push({ tone, start: i, end: i + 1 });
+    });
+    const toneLabel = { heating: this._t("lg_heated"), scheduled: this._t("lg_scheduled"), planned: this._t("lg_planned") };
+    const summary = spans.length
+      ? spans.map(s => `${toneLabel[s.tone]} ${hhmm(s.start)}–${hhmm(s.end)}`).join("; ")
+      : this._t("tl_none");
+    const tl = el("div", { class: "timeline", dir: "ltr", role: "img", "aria-label": `${this._t("today")}: ${summary}` });
     segs.forEach(t => tl.appendChild(el("div", { class: "timeline-seg " + t })));
     const nowPct = ((now.getHours() * 60 + now.getMinutes()) / 1440) * 100;
     tl.appendChild(el("div", { class: "timeline-now", style: `left:${nowPct}%;` }));
@@ -1388,7 +1471,7 @@ class DudPanel extends HTMLElement {
     const card = el("div", { class: "card schedule-card" });
     card.appendChild(el("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;" }, [
       el("h3", { style: "margin:0;" }, this._t("schedules")),
-      el("button", { class: "btn primary small", onClick: () => this._openScheduleModal(null) }, this._t("add")),
+      el("button", { class: "btn primary small", "data-focus-key": "sched-add", onClick: () => this._openScheduleModal(null) }, this._t("add")),
     ]));
     if (!schedules.length) {
       card.appendChild(el("div", { class: "empty" }, this._t("no_schedules")));
@@ -1408,19 +1491,19 @@ class DudPanel extends HTMLElement {
         nextLine = el("div", { class: "next" + (skipping ? " skipped" : "") },
           next ? (skipping ? this._t("skipped_until", this._fmtWhen(next)) : this._t("next_run", this._fmtWhen(next))) : this._t("not_scheduled"));
       }
-      const toggle = el("input", { type: "checkbox", "aria-label": this._t("enabled") });
+      const toggle = el("input", { type: "checkbox", role: "switch", "aria-label": `${this._t("enabled")}: ${s.name || this._t("sched_default_name", s.time_hhmm)}`, "data-focus-key": `sched-${s.id}-on` });
       toggle.checked = !!s.enabled;
       toggle.addEventListener("change", () => this._callService("update_schedule", { schedule_id: s.id, enabled: toggle.checked }));
       const actions = [];
       if (s.enabled && (next || skipping)) {
         actions.push(el("button", {
-          class: "btn small",
+          class: "btn small", "data-focus-key": `sched-${s.id}-skip`,
           onClick: () => this._callService("update_schedule", { schedule_id: s.id, skip_until: skipping ? 0 : next + 60 }),
         }, skipping ? this._t("undo_skip") : this._t("skip_once")));
       }
-      actions.push(el("button", { class: "btn small", onClick: () => this._openScheduleModal(s) }, this._t("edit_btn")));
+      actions.push(el("button", { class: "btn small", "data-focus-key": `sched-${s.id}-edit`, onClick: () => this._openScheduleModal(s) }, this._t("edit_btn")));
       actions.push(el("button", {
-        class: "btn danger small", "aria-label": "delete",
+        class: "btn danger small", "aria-label": this._t("delete_schedule"), "data-focus-key": `sched-${s.id}-del`,
         onClick: () => {
           if (!confirm(this._t("delete_confirm"))) return;
           this._callService("remove_schedule", { schedule_id: s.id });
@@ -1661,13 +1744,18 @@ class DudPanel extends HTMLElement {
       const pane = el("div", { class: "settings-pane", role: "tabpanel", style: i ? "display:none;" : "" }, content);
       const btn = el("button", { type: "button", class: "settings-tab" + (i ? "" : " active"), role: "tab", "aria-selected": i ? "false" : "true" }, t(key));
       btn.addEventListener("click", () => {
-        [...tabBar.children].forEach((b, j) => { b.classList.toggle("active", j === i); b.setAttribute("aria-selected", j === i ? "true" : "false"); });
+        [...tabBar.children].forEach((b, j) => {
+          b.classList.toggle("active", j === i);
+          b.setAttribute("aria-selected", j === i ? "true" : "false");
+          b.setAttribute("tabindex", j === i ? "0" : "-1");
+        });
         panes.forEach((p, j) => { p.style.display = j === i ? "" : "none"; });
       });
       tabBar.appendChild(btn);
       return pane;
     });
 
+    arrowNav(tabBar, this._lang === "he");
     this._showModal(t("settings"), [...datalists, tabBar, ...panes], async () => {
       await this._saveOptions({
         target_temp: numOr(target.value, 55, parseInt),
@@ -1715,20 +1803,39 @@ class DudPanel extends HTMLElement {
 
   _showModal(title, fields, onSave) {
     this._modalRoot.innerHTML = "";
+    const opener = document.activeElement;
+    const openerKey = opener && opener.getAttribute ? opener.getAttribute("data-focus-key") : null;
+    const close = () => {
+      this._modalRoot.innerHTML = "";
+      // The opener may have been re-rendered meanwhile: find it again by key.
+      const back = (openerKey && this._app.querySelector(`[data-focus-key="${openerKey}"]`)) || opener;
+      if (back && back.isConnected) back.focus();
+    };
     const modal = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title }, [el("h3", {}, title)]);
     fields.forEach(f => modal.appendChild(f));
-    const cancelBtn = el("button", { class: "btn", onClick: () => { this._modalRoot.innerHTML = ""; } }, this._t("cancel"));
+    const cancelBtn = el("button", { class: "btn", onClick: close }, this._t("cancel"));
     const saveBtn = el("button", { class: "btn primary", onClick: async () => {
       saveBtn.disabled = true;
       try {
         const ok = await onSave();
-        if (ok) this._modalRoot.innerHTML = "";
+        if (ok) close();
       } finally { saveBtn.disabled = false; }
     } }, this._t("save"));
     modal.appendChild(el("div", { class: "modal-actions" }, [cancelBtn, saveBtn]));
     const overlay = el("div", { class: "modal-overlay" }, modal);
-    overlay.addEventListener("click", e => { if (e.target === overlay) this._modalRoot.innerHTML = ""; });
+    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    overlay.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); close(); return; }
+      if (ev.key !== "Tab") return;
+      const items = [...modal.querySelectorAll(FOCUSABLE)].filter(n => n.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    });
     this._modalRoot.appendChild(overlay);
+    const firstField = modal.querySelector(FOCUSABLE);
+    if (firstField) firstField.focus();
   }
 }
 
