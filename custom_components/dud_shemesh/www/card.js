@@ -97,6 +97,8 @@ const STYLES = `
 }
 .empty { color: var(--secondary-text-color); font-size: 13px; padding: 8px 0; font-style: italic; }
 .error { color: var(--error-color, #e53935); font-size: 12px; margin-top: 8px; }
+.locked .boost-row, .locked .mode-toggle, .locked .target-row { pointer-events: none; opacity: .45; }
+.lock-note { font-size: 12px; color: #8e24aa; margin: 2px 0 6px; }
 `;
 
 const I18N = {
@@ -107,7 +109,8 @@ const I18N = {
     auto: "Auto", schedule: "Schedule", off: "Off",
     st_ready: "Ready", st_heating: "Heating", st_waiting: "Waiting", st_solar: "Solar", st_cold: "Cold",
     src_schedule: "Schedule", src_boost: "Boost", src_manual: "Manual", src_auto: "Pre-heat",
-    src_legionella: "Anti-Legionella", src_calendar: "Calendar", src_vacation_hold: "Vacation",
+    src_legionella: "Anti-Legionella", src_calendar: "Calendar", src_vacation_hold: "Vacation", src_shabbat: "Shabbat",
+    shabbat_locked: "🕯 Shabbat mode — controls locked",
     next: "Next:", hot_by: "Hot by", today: "today", tomorrow: "tomorrow",
     dur_hm: (h, m) => `${h}h ${String(m).padStart(2, "0")}m`,
     e_title: "Title", e_entry: "Water heater", e_first: "First (default)", e_show_mode: "Show mode switch",
@@ -119,7 +122,8 @@ const I18N = {
     auto: "אוטומטי", schedule: "לוח זמנים", off: "כבוי",
     st_ready: "מוכן", st_heating: "מחמם", st_waiting: "ממתין", st_solar: "סולארי", st_cold: "קר",
     src_schedule: "לוח זמנים", src_boost: "הפעלה מהירה", src_manual: "ידני", src_auto: "חימום מקדים",
-    src_legionella: "חיטוי ליגיונלה", src_calendar: "יומן", src_vacation_hold: "חופשה",
+    src_legionella: "חיטוי ליגיונלה", src_calendar: "יומן", src_vacation_hold: "חופשה", src_shabbat: "שבת",
+    shabbat_locked: "🕯 מצב שבת — הבקרה נעולה",
     next: "הבא:", hot_by: "חם עד", today: "היום", tomorrow: "מחר",
     dur_hm: (h, m) => `${h} ש׳ ${String(m).padStart(2, "0")} ד׳`,
     e_title: "כותרת", e_entry: "דוד", e_first: "הראשון (ברירת מחדל)", e_show_mode: "הצג בורר מצב",
@@ -355,6 +359,8 @@ class DudCard extends HTMLElement {
 
     const card = mk("div", "card");
     card.dir = langOf(this._hass) === "he" ? "rtl" : "ltr";
+    const locked = !!(s.shabbat && s.shabbat.locked);
+    card.classList.toggle("locked", locked);
 
     const title = mk("div", "title");
     title.appendChild(mk("span", null, this._config.title || this._t("brand")));
@@ -406,6 +412,7 @@ class DudCard extends HTMLElement {
     gaugeRow.appendChild(side);
     card.appendChild(gaugeRow);
 
+    if (locked) card.appendChild(mk("div", "lock-note", this._t("shabbat_locked")));
     const nxt = s.next_heat;
     if (!active && nxt) {
       const line = mk("div", "next");

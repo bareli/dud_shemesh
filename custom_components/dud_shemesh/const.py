@@ -71,6 +71,14 @@ SHOWER_LITRES = 50.0             # ~8 min at 6 L/min, mixed to SHOWER_TEMP
 
 UPCOMING_HORIZON_H = 24
 
+# Learned heat rate (v0.6)
+HEAT_RATE_ALPHA = 0.3            # EMA weight of the newest run
+HEAT_RATE_MIN_RUN_MIN = 10       # ignore shorter runs
+HEAT_RATE_MIN_SAMPLES = 2        # runs needed before the learned rate is trusted
+FALLBACK_MIN_PER_C = 6.0         # no data, no tank volume
+ELEMENT_EFFICIENCY = 0.95
+WATER_KJ_PER_L_C = 4.186
+
 NOTIFY_EVENTS = (
     "heat_start",
     "heat_end",
@@ -81,7 +89,93 @@ NOTIFY_EVENTS = (
     "legionella_done",
     "safety_stop",
     "sensor_stale",
+    "manual_on",
+    "cold_warning",
 )
+
+# Forecast-based skipping (v0.6)
+CONF_FORECAST_HOURS = "forecast_hours"
+CONF_FORECAST_CLOUD_MAX = "forecast_cloud_max"
+CONF_SOLAR_FORECAST_ENTITY = "solar_forecast_entity"
+CONF_SOLAR_FORECAST_MIN = "solar_forecast_min"
+DEFAULT_FORECAST_HOURS = 0       # 0 = use the current weather state only
+DEFAULT_FORECAST_CLOUD_MAX = 40  # % cloud cover still counted as sunny
+DEFAULT_SOLAR_FORECAST_MIN = 1.0
+FORECAST_SUNNY_FRACTION = 0.6
+FORECAST_REFRESH_MIN = 30
+
+# Time-of-use tariffs (v0.6)
+CONF_TARIFF_WINDOWS = "tariff_windows"     # "23:00-07:00@0.49,..." (₪/kWh)
+CONF_PREFER_CHEAP = "prefer_cheap"
+DEFAULT_PREFER_CHEAP = True
+CHEAP_SHIFT_MAX_H = 8                      # how far ahead auto pre-heat may move
+CHEAP_STEP_MIN = 15
+STANDBY_PENALTY_PER_H = 0.01               # fraction of run cost per hour waiting
+
+# Shabbat mode (v0.6), driven by the jewish_calendar integration
+CONF_SHABBAT_ENABLED = "shabbat_enabled"
+CONF_SHABBAT_TARGET = "shabbat_target"   # 0 = use the normal target
+CONF_SHABBAT_LOCK = "shabbat_lock"
+CONF_SHABBAT_QUIET = "shabbat_quiet"
+JC_CANDLE_KEY = "upcoming_candle_lighting"
+JC_HAVDALAH_KEY = "upcoming_havdalah"
+JC_ISSUR_KEY = "issur_melacha_in_effect"
+SHABBAT_LOOKAHEAD_H = 24
+
+# Actionable notifications (mobile_app): "DUDSHEMESH:<cmd>:<arg>:<entry_id>"
+ACTION_PREFIX = "DUDSHEMESH"
+COLD_WARNING_LEAD_MIN = 60
+
+# Notification texts, {placeholders} filled by the scheduler.
+MESSAGES = {
+    "en": {
+        "title": "Dud Shemesh",
+        "title_safety": "Dud Shemesh — safety",
+        "title_fault": "Dud Shemesh — heater issue",
+        "title_sensor": "Dud Shemesh — sensor",
+        "heat_start": "Heating started ({source}, target {target}°C, {minutes} min)",
+        "heat_end": "Heating ended ({status}). Tank: {temp}°C",
+        "target_reached": "Target {target}°C reached",
+        "skipped_solar": "Scheduled heating skipped: the sun is heating the tank ({temp}°C).",
+        "skipped_weather": "Scheduled heating skipped: sunny weather ({temp}°C).",
+        "heat_not_rising": "Tank not rising as expected (start {start}°C, now {now}°C). Check element / breaker.",
+        "legionella_done": "Anti-Legionella cycle completed",
+        "overtemp": "Heater stopped: tank reached {temp}°C (limit {limit}°C).",
+        "left_on": "Heater was left on; turned off after {minutes} min.",
+        "manual_on": "Heater was switched on manually. It will turn off at {until}.",
+        "sensor_stale": "Tank temperature sensor is unavailable or stale. Heating runs by time only until it recovers.",
+        "cold_warning": "Tank is {temp}°C and nothing is planned; it won't be hot by {at}.",
+        "a_heat_now": "Heat now",
+        "a_boost_1h": "Boost 1 h",
+        "a_keep_30": "Keep 30 min",
+        "a_stop": "Turn off",
+        "a_ignore": "Ignore",
+    },
+    "he": {
+        "title": "דוד שמש",
+        "title_safety": "דוד שמש — בטיחות",
+        "title_fault": "דוד שמש — תקלה בגוף החימום",
+        "title_sensor": "דוד שמש — חיישן",
+        "heat_start": "החימום התחיל ({source}, יעד {target}°C, {minutes} דק׳)",
+        "heat_end": "החימום הסתיים ({status}). במיכל: {temp}°C",
+        "target_reached": "הגיע ליעד {target}°C",
+        "skipped_solar": "החימום המתוזמן דולג: השמש מחממת את המיכל ({temp}°C).",
+        "skipped_weather": "החימום המתוזמן דולג: מזג אוויר שמשי ({temp}°C).",
+        "heat_not_rising": "הטמפרטורה לא עולה כמצופה (התחלה {start}°C, עכשיו {now}°C). בדקו את הגוף / המפסק.",
+        "legionella_done": "מחזור חיטוי ליגיונלה הושלם",
+        "overtemp": "החימום הופסק: המיכל הגיע ל-{temp}°C (מגבלה {limit}°C).",
+        "left_on": "הדוד נשאר דולק; כובה אחרי {minutes} דק׳.",
+        "manual_on": "הדוד הודלק ידנית. הוא יכבה ב-{until}.",
+        "sensor_stale": "חיישן טמפרטורת המיכל לא זמין. החימום יפעל לפי זמן בלבד עד שיחזור.",
+        "cold_warning": "המיכל ב-{temp}°C ואין חימום מתוכנן; המים לא יהיו חמים עד {at}.",
+        "a_heat_now": "חמם עכשיו",
+        "a_boost_1h": "חימום שעה",
+        "a_keep_30": "עוד 30 דק׳",
+        "a_stop": "כבה",
+        "a_ignore": "התעלם",
+    },
+}
+
 
 DEFAULT_TARGET_TEMP = 55
 DEFAULT_HEATER_WATTAGE = 2400

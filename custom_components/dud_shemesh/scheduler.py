@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
@@ -19,13 +20,36 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ACTION_PREFIX,
+    COLD_WARNING_LEAD_MIN,
+    CHEAP_SHIFT_MAX_H,
+    CHEAP_STEP_MIN,
     COLD_WATER_TEMP,
     DAY_BITS,
+    JC_CANDLE_KEY,
+    JC_HAVDALAH_KEY,
+    JC_ISSUR_KEY,
+    SHABBAT_LOOKAHEAD_H,
+    DEFAULT_PREFER_CHEAP,
+    DEFAULT_TARIFF_ILS_PER_KWH,
+    STANDBY_PENALTY_PER_H,
+    DEFAULT_FORECAST_CLOUD_MAX,
+    DEFAULT_FORECAST_HOURS,
+    DEFAULT_SOLAR_FORECAST_MIN,
+    FORECAST_REFRESH_MIN,
+    FORECAST_SUNNY_FRACTION,
+    MESSAGES,
     DEFAULT_MANUAL_ON_MAX_MIN,
     DEFAULT_MAX_RUN_MIN,
     DEFAULT_MAX_TANK_TEMP,
     DEFAULT_SENSOR_STALE_MIN,
+    ELEMENT_EFFICIENCY,
+    FALLBACK_MIN_PER_C,
+    HEAT_RATE_ALPHA,
+    HEAT_RATE_MIN_RUN_MIN,
+    HEAT_RATE_MIN_SAMPLES,
     SHOWER_LITRES,
+    WATER_KJ_PER_L_C,
     SHOWER_TEMP,
     UPCOMING_HORIZON_H,
     DEFAULT_FAIL_DETECTION_MINUTES,
@@ -62,10 +86,16 @@ RE_CAL_TEMP = re.compile(r"(\d{2,3})\s*°?\s*c\b")
 
 
 class DudScheduler:
-    def __init__(self, hass: HomeAssistant, store: DudStore, options: dict):
+    def __init__(self, hass: HomeAssistant, store: DudStore, options: dict, entry_id: str = ""):
         self.hass = hass
         self.store = store
         self.options = options
+        self.entry_id = entry_id
+        self._cold_warned: dict[str, int] = {}             # window key -> ready ts
+        self._forecast: Optional[list[dict]] = None         # hourly weather forecast cache
+        self._shabbat_done: set[int] = set()                # candle-lighting ts already pre-heated
+        self._jc_cache: dict[tuple[str, str], tuple[Optional[str], float]] = {}
+        self._unsub_forecast = None
         self._unsub_minute = None
         self._unsub_calendar = None
         self._unsub_heater_state = None
@@ -97,6 +127,10 @@ class DudScheduler:
             self._unsub_heater_state = async_track_state_change_event(
                 self.hass, [heater], self._on_heater_state_change
             )
+        if (self.options.get("weather_entity") or "").strip():
+            self._unsub_forecast = async_track_time_interval(
+                self.hass, self._refresh_forecast, timedelta(minutes=FORECAST_REFRESH_MIN)
+            )
         # Heater entity may not exist yet during HA startup; restore once started.
         self._unsub_started = async_at_started(self.hass, self._on_ha_started)
         LOG.info("dud_shemesh scheduler started")
@@ -105,6 +139,8 @@ class DudScheduler:
         self._unsub_started = None
         self._ha_started = True
         await self._restore_active_boost()
+        if self._unsub_forecast:
+            await self._refresh_forecast()
         heater = self.options.get("heater_entity")
         state = self.hass.states.get(heater) if heater else None
         if not self._active and state and state.state in ON_STATES:
@@ -141,6 +177,11 @@ class DudScheduler:
             target_temp=int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP),
             note="adopted manual turn-on", heater_already_on=True,
         ))
+        until = dt_util.as_local(dt_util.now() + timedelta(minutes=max_min)).strftime("%H:%M")
+        self.hass.async_create_task(self._notify(
+            "manual_on", self._msg("title_safety"), self._msg("manual_on", until=until),
+            actions=[("extend", 30, "a_keep_30"), ("stop", 0, "a_stop")],
+        ))
 
     def _max_run_sec(self) -> int:
         return max(1, int(self.options.get("max_run_min") or DEFAULT_MAX_RUN_MIN)) * 60
@@ -151,6 +192,7 @@ class DudScheduler:
     async def async_stop(self) -> None:
         for attr in (
             "_unsub_minute", "_unsub_calendar", "_unsub_heater_state", "_unsub_started",
+            "_unsub_forecast",
         ):
             unsub = getattr(self, attr)
             if unsub:
@@ -234,9 +276,11 @@ class DudScheduler:
                 ))
             return
 
+        self._maybe_cold_warning()
+
         # Only one run may start per minute tick; _active is set inside the task.
-        started = False
-        if mode == MODE_AUTO:
+        started = self._maybe_shabbat_preheat()
+        if mode == MODE_AUTO and not started:
             started = self._evaluate_auto_preheat(local)
 
         bit = DAY_BITS[local.weekday()]
@@ -265,7 +309,8 @@ class DudScheduler:
                     starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
                 ))
                 self.hass.async_create_task(self._notify(
-                    "skipped_solar", "Dud Shemesh", "Scheduled heating skipped: solar gain detected",
+                    "skipped_solar", self._msg("title"), self._msg("skipped_solar", temp=self._fmt_temp()),
+                    actions=[("boost", int(sched.get("duration_min", 60)), "a_heat_now")],
                 ))
                 continue
             if self._weather_says_sunny():
@@ -275,7 +320,8 @@ class DudScheduler:
                     starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
                 ))
                 self.hass.async_create_task(self._notify(
-                    "skipped_weather", "Dud Shemesh", "Scheduled heating skipped: sunny weather",
+                    "skipped_weather", self._msg("title"), self._msg("skipped_weather", temp=self._fmt_temp()),
+                    actions=[("boost", int(sched.get("duration_min", 60)), "a_heat_now")],
                 ))
                 continue
             target_temp = sched.get("target_temp")
@@ -350,18 +396,64 @@ class DudScheduler:
         threshold = float(self.options.get("solar_rise_threshold", DEFAULT_SOLAR_RISE_THRESHOLD))
         return rise >= threshold
 
-    def _weather_says_sunny(self) -> bool:
+    async def _refresh_forecast(self, _now=None) -> None:
         ent = (self.options.get("weather_entity") or "").strip()
-        if not ent:
-            return False
-        s = self.hass.states.get(ent)
-        if not s:
-            return False
+        if not ent or int(self.options.get("forecast_hours") or DEFAULT_FORECAST_HOURS) <= 0:
+            return
+        try:
+            response = await self.hass.services.async_call(
+                "weather", "get_forecasts", {"entity_id": ent, "type": "hourly"},
+                blocking=True, return_response=True,
+            )
+        except Exception as e:
+            LOG.debug("hourly forecast unavailable for %s: %s", ent, e)
+            self._forecast = None
+            return
+        self._forecast = ((response or {}).get(ent) or {}).get("forecast") or None
+
+    def _forecast_sunny(self) -> Optional[bool]:
+        """Mostly sunny over the next forecast_hours, or None when there is no forecast."""
+        hours = int(self.options.get("forecast_hours") or DEFAULT_FORECAST_HOURS)
+        if hours <= 0 or not self._forecast:
+            return None
+        now = dt_util.utcnow()
+        end = now + timedelta(hours=hours)
+        skip_states = self._skip_states()
+        cloud_max = float(self.options.get("forecast_cloud_max") or DEFAULT_FORECAST_CLOUD_MAX)
+        slots = []
+        for item in self._forecast:
+            at = dt_util.parse_datetime(str(item.get("datetime", "")))
+            if at is None or not (now - timedelta(minutes=59) <= at <= end):
+                continue
+            cloud = item.get("cloud_coverage")
+            slots.append(item.get("condition") in skip_states or (cloud is not None and float(cloud) <= cloud_max))
+        if not slots:
+            return None
+        return sum(slots) / len(slots) >= FORECAST_SUNNY_FRACTION
+
+    def _skip_states(self) -> list[str]:
+        raw = str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES))
+        return [x.strip() for x in raw.split(",") if x.strip()]
+
+    def _weather_says_sunny(self) -> bool:
         sun = self.hass.states.get("sun.sun")
         if sun and sun.state == "below_horizon":
             return False  # solar cannot help before sunrise / after sunset
-        states = [x.strip() for x in str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES)).split(",") if x.strip()]
-        return s.state in states
+        solar_ent = (self.options.get("solar_forecast_entity") or "").strip()
+        if solar_ent:
+            s = self.hass.states.get(solar_ent)
+            try:
+                return float(s.state) >= float(self.options.get("solar_forecast_min") or DEFAULT_SOLAR_FORECAST_MIN)
+            except (AttributeError, TypeError, ValueError):
+                pass  # unavailable: fall back to weather
+        ent = (self.options.get("weather_entity") or "").strip()
+        if not ent:
+            return False
+        forecast = self._forecast_sunny()
+        if forecast is not None:
+            return forecast
+        s = self.hass.states.get(ent)
+        return bool(s) and s.state in self._skip_states()
 
     async def _on_calendar_poll(self, _now) -> None:
         now_ts = int(time.time())
@@ -466,7 +558,52 @@ class DudScheduler:
             return 0
         return until
 
-    async def _notify(self, event: str, title: str, message: str) -> None:
+    def _lang(self) -> str:
+        return "he" if str(self.hass.config.language or "").lower().startswith("he") else "en"
+
+    def _msg(self, key: str, **kw) -> str:
+        text = MESSAGES[self._lang()].get(key) or MESSAGES["en"][key]
+        return text.format(**kw) if kw else text
+
+    def _fmt_temp(self, value: Optional[float] = None) -> str:
+        value = self._read_temp() if value is None else value
+        return "—" if value is None else f"{value:.0f}"
+
+    def _maybe_cold_warning(self) -> None:
+        """Warn once, COLD_WARNING_LEAD_MIN before a comfort window, if nothing will heat the tank."""
+        if self._active or not self._ha_started:
+            return
+        cur = self._read_temp()
+        target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+        if cur is None or cur >= target - 3:
+            return
+        now = dt_util.now()
+        now_ts = int(now.timestamp())
+        self._cold_warned = {k: ts for k, ts in self._cold_warned.items() if ts > now_ts - 86400}
+        planned = self.upcoming()
+        for d in (0, 1):
+            for hh, mm, label in self._parse_windows():
+                ready = (now + timedelta(days=d)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+                ready_ts = int(ready.timestamp())
+                minutes_to = (ready_ts - now_ts) / 60
+                key = f"{label}|{ready.date()}"
+                if not 0 < minutes_to <= COLD_WARNING_LEAD_MIN or key in self._cold_warned:
+                    continue
+                if any(now_ts <= u["at"] <= ready_ts for u in planned):
+                    continue
+                self._cold_warned[key] = ready_ts
+                self.hass.async_create_task(self._notify(
+                    "cold_warning", self._msg("title"),
+                    self._msg("cold_warning", temp=self._fmt_temp(cur), at=f"{hh:02d}:{mm:02d}"),
+                    actions=[("boost", 60, "a_boost_1h"), ("ignore", 0, "a_ignore")],
+                ))
+
+    async def _notify(
+        self, event: str, title: str, message: str,
+        actions: Optional[list[tuple[str, int, str]]] = None,
+    ) -> None:
+        if self.options.get("shabbat_enabled") and self.options.get("shabbat_quiet", True) and self.shabbat_in_effect():
+            return
         events = self.options.get("notify_events") or []
         if isinstance(events, str):
             events = [e.strip() for e in events.split(",") if e.strip()]
@@ -478,12 +615,19 @@ class DudScheduler:
         for t in targets:
             if not t:
                 continue
+            payload = {"title": title, "message": message}
+            # Only the companion app understands action buttons; other notifiers
+            # may reject unknown data keys.
+            if actions and t.startswith("mobile_app_"):
+                payload["data"] = {
+                    "tag": f"dud_shemesh_{event}",
+                    "actions": [
+                        {"action": f"{ACTION_PREFIX}:{cmd}:{arg}:{self.entry_id}", "title": self._msg(label)}
+                        for cmd, arg, label in actions
+                    ],
+                }
             try:
-                await self.hass.services.async_call(
-                    "notify", t,
-                    {"title": title, "message": message},
-                    blocking=False,
-                )
+                await self.hass.services.async_call("notify", t, payload, blocking=False)
             except Exception as e:
                 LOG.warning("notify %s failed: %s", t, e)
 
@@ -518,8 +662,7 @@ class DudScheduler:
             self._stale_notified = True
             LOG.warning("dud_shemesh: tank temperature sensor unavailable or stale; running time-only")
             self.hass.async_create_task(self._notify(
-                "sensor_stale", "Dud Shemesh — sensor",
-                "Tank temperature sensor is unavailable or stale. Heating runs by time only until it recovers.",
+                "sensor_stale", self._msg("title_sensor"), self._msg("sensor_stale"),
             ))
 
     async def async_start_heat(
@@ -582,8 +725,8 @@ class DudScheduler:
             "note": note,
         })
         self.hass.async_create_task(self._notify(
-            "heat_start", "Dud Shemesh",
-            f"Heating started ({source}, target {target_temp}°C, {duration_min} min)",
+            "heat_start", self._msg("title"),
+            self._msg("heat_start", source=source, target=target_temp if target_temp is not None else "—", minutes=duration_min),
         ))
         self._arm_run_timers()
         async_dispatcher_send(self.hass, SIGNAL_STATE_CHANGED)
@@ -613,8 +756,9 @@ class DudScheduler:
                 "source": self._active.get("source"),
             })
             await self._notify(
-                "heat_not_rising", "Dud Shemesh — heater issue",
-                f"Tank not rising as expected (start {starting:.1f}°C, now {cur:.1f}°C). Check element / breaker.",
+                "heat_not_rising", self._msg("title_fault"),
+                self._msg("heat_not_rising", start=f"{starting:.1f}", now=f"{cur:.1f}"),
+                actions=[("stop", 0, "a_stop")],
             )
 
     @callback
@@ -631,8 +775,8 @@ class DudScheduler:
         if cur >= max_temp:
             LOG.warning("dud_shemesh: tank at %.1f°C >= safety limit %.0f°C, stopping", cur, max_temp)
             self.hass.async_create_task(self._notify(
-                "safety_stop", "Dud Shemesh — safety",
-                f"Heater stopped: tank reached {cur:.0f}°C (limit {max_temp:.0f}°C).",
+                "safety_stop", self._msg("title_safety"),
+                self._msg("overtemp", temp=f"{cur:.0f}", limit=f"{max_temp:.0f}"),
             ))
             self.hass.async_create_task(self._async_close("safety_overtemp"))
             return
@@ -646,8 +790,7 @@ class DudScheduler:
                 "target_temp": target,
             })
             self.hass.async_create_task(self._notify(
-                "target_reached", "Dud Shemesh",
-                f"Target {target}°C reached",
+                "target_reached", self._msg("title"), self._msg("target_reached", target=target),
             ))
             self.hass.async_create_task(self._async_close("target_reached"))
 
@@ -675,10 +818,11 @@ class DudScheduler:
             actual_min = round(max(0, ended_at - started_at) / 60, 1)
             ending_temp = self._read_temp()
             await self.store.async_add_energy(actual_min / 60 * self._wattage_kw())
+            await self._learn_heat_rate(active, status, actual_min, ending_temp)
+            cost = round(self.run_cost(started_at, int(started_at + actual_min * 60)), 3)
             if active.get("source") == "manual" and status == "completed":
                 await self._notify(
-                    "safety_stop", "Dud Shemesh — safety",
-                    f"Heater was left on; turned off after {actual_min:.0f} min.",
+                    "safety_stop", self._msg("title_safety"), self._msg("left_on", minutes=f"{actual_min:.0f}"),
                 )
             await self.store.async_record_run(
                 active.get("source", "manual"),
@@ -689,6 +833,7 @@ class DudScheduler:
                 note=active.get("note", ""),
                 started_at=started_at,
                 actual_min=actual_min,
+                cost=cost,
             )
             self.hass.bus.async_fire(EVENT_HEAT_FINISHED, {
                 "source": active.get("source"),
@@ -699,17 +844,13 @@ class DudScheduler:
                 "ending_temp": ending_temp,
             })
             await self._notify(
-                "heat_end", "Dud Shemesh",
-                f"Heating ended ({status}). Tank: {ending_temp if ending_temp is not None else '—'}°C",
+                "heat_end", self._msg("title"), self._msg("heat_end", status=status, temp=self._fmt_temp(ending_temp)),
             )
             if active.get("source") == "legionella":
                 # Only a confirmed target temperature counts as a disinfection.
                 if status == "target_reached":
                     await self.store.async_set_last_legionella(now)
-                    await self._notify(
-                        "legionella_done", "Dud Shemesh",
-                        "Anti-Legionella cycle completed",
-                    )
+                    await self._notify("legionella_done", self._msg("title"), self._msg("legionella_done"))
                 else:
                     LOG.warning(
                         "dud_shemesh: anti-legionella run ended (%s) without reaching target; not recorded",
@@ -774,6 +915,7 @@ class DudScheduler:
         margin = int(self.options.get("auto_pre_heat_margin_min", DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN))
         eta = self.estimate_minutes_to_target() or 30
 
+        now_ts = int(local.timestamp())
         for hh, mm in windows:
             try:
                 window_start = local.replace(hour=hh, minute=mm, second=0, microsecond=0)
@@ -781,8 +923,8 @@ class DudScheduler:
                 continue
             if window_start <= local:
                 continue
-            minutes_to_window = int((window_start - local).total_seconds() // 60)
-            if minutes_to_window <= eta + margin:
+            start_ts = self.plan_preheat_start(int(window_start.timestamp()), eta + margin, now_ts)
+            if now_ts >= start_ts:
                 key = f"auto:{window_start.isoformat()}"
                 if self._planned_preheats.get(key):
                     continue
@@ -819,17 +961,184 @@ class DudScheduler:
             domain, service, {"entity_id": entity_id}, blocking=True
         )
 
-    def estimate_minutes_to_target(self) -> Optional[int]:
+    async def _learn_heat_rate(self, active: dict, status: str, actual_min: float, ending_temp) -> None:
+        """Fold a finished run's °C/min into the tank's moving average."""
+        if status not in ("completed", "target_reached") or actual_min < HEAT_RATE_MIN_RUN_MIN:
+            return
+        start = active.get("starting_temp")
+        if start is None or ending_temp is None or ending_temp <= start:
+            return
+        rate = (ending_temp - start) / actual_min
+        learned = self.store.heat_rate
+        prev, n = learned.get("c_per_min"), int(learned.get("samples") or 0)
+        new = rate if prev is None else HEAT_RATE_ALPHA * rate + (1 - HEAT_RATE_ALPHA) * float(prev)
+        await self.store.async_set_heat_rate(new, n + 1)
+
+    def heat_rate(self) -> tuple[Optional[float], str]:
+        """Heating speed in °C/min and where it came from: learned, physics or fallback."""
+        learned = self.store.heat_rate
+        if learned.get("c_per_min") and int(learned.get("samples") or 0) >= HEAT_RATE_MIN_SAMPLES:
+            return float(learned["c_per_min"]), "learned"
+        volume = float(self.options.get("tank_volume_l") or 0)
+        kw = self._wattage_kw()
+        if volume > 0 and kw > 0:
+            return kw * 60 * ELEMENT_EFFICIENCY / (volume * WATER_KJ_PER_L_C), "physics"
+        return 1 / FALLBACK_MIN_PER_C, "fallback"
+
+    def estimate_minutes_to_target(self, target: Optional[float] = None) -> Optional[int]:
         cur = self._read_temp()
         if cur is None:
             return None
-        target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+        if target is None:
+            target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
         if cur >= target:
             return 0
-        # Crude estimate: 2 kW heater raises typical 150L tank by ~10°C in ~45 min.
-        # Without history of actual rate, fall back to flat 5°C per 30 min.
-        delta = target - cur
-        return int(round(delta * 6.0))  # ~6 minutes per °C
+        rate, _ = self.heat_rate()
+        return max(1, int(round((target - cur) / rate)))
+
+    def _tariff_windows(self) -> list[tuple[int, int, float]]:
+        """[(start_min, end_min, price)] from "HH:MM-HH:MM@price,..."; end < start wraps midnight."""
+        out = []
+        for chunk in str(self.options.get("tariff_windows") or "").split(","):
+            if "@" not in chunk or "-" not in chunk:
+                continue
+            span, price = chunk.split("@", 1)
+            start, end = span.split("-", 1)
+            try:
+                sh, sm = [int(x) for x in start.strip().split(":")]
+                eh, em = [int(x) for x in end.strip().split(":")]
+                out.append((sh * 60 + sm, eh * 60 + em, float(price)))
+            except ValueError:
+                continue
+        return out
+
+    def _base_price(self) -> float:
+        return float(self.options.get("tariff_ils_per_kwh") or DEFAULT_TARIFF_ILS_PER_KWH)
+
+    def price_at(self, ts: int) -> float:
+        """₪/kWh at a moment, from the time-of-use windows or the base tariff."""
+        local = dt_util.as_local(dt_util.utc_from_timestamp(ts))
+        minute = local.hour * 60 + local.minute
+        for start, end, price in self._tariff_windows():
+            inside = start <= minute < end if start < end else (minute >= start or minute < end)
+            if inside:
+                return price
+        return self._base_price()
+
+    def run_cost(self, start_ts: int, end_ts: int) -> float:
+        """₪ for running the element between two timestamps (5-minute resolution)."""
+        kw = self._wattage_kw()
+        if end_ts <= start_ts or kw <= 0:
+            return 0.0
+        if not self._tariff_windows():
+            return (end_ts - start_ts) / 3600 * kw * self._base_price()
+        total = 0.0
+        t = start_ts
+        while t < end_ts:
+            step = min(300, end_ts - t)
+            total += step / 3600 * kw * self.price_at(t)
+            t += step
+        return total
+
+    def plan_preheat_start(self, ready_ts: int, duration_min: int, now_ts: Optional[int] = None) -> int:
+        """When to start a pre-heat that must be done by ready_ts.
+
+        Without time-of-use windows (or with prefer_cheap off) this is simply
+        ready - duration. Otherwise the cheapest start in the preceding hours,
+        with a small standby-loss penalty for finishing early.
+        """
+        latest = ready_ts - duration_min * 60
+        prefer = self.options.get("prefer_cheap", DEFAULT_PREFER_CHEAP)
+        if not prefer or not self._tariff_windows():
+            return latest
+        now_ts = int(time.time()) if now_ts is None else now_ts
+        earliest = max(now_ts, ready_ts - CHEAP_SHIFT_MAX_H * 3600)
+        best, best_cost = latest, None
+        start = latest
+        while start >= earliest:
+            end = start + duration_min * 60
+            cost = self.run_cost(start, end)
+            cost *= 1 + STANDBY_PENALTY_PER_H * (ready_ts - end) / 3600
+            if best_cost is None or cost < best_cost - 1e-9:
+                best, best_cost = start, cost
+            start -= CHEAP_STEP_MIN * 60
+        return best
+
+    def _jc_entity(self, domain: str, key: str) -> Optional[str]:
+        """Entity id of a jewish_calendar entity by its description key (cached 10 min)."""
+        now = time.time()
+        cached = self._jc_cache.get((domain, key))
+        if cached and now - cached[1] < 600:
+            return cached[0]
+        found = None
+        for entry in er.async_get(self.hass).entities.values():
+            if entry.platform == "jewish_calendar" and entry.domain == domain and entry.unique_id.endswith(f"-{key}"):
+                found = entry.entity_id
+                break
+        self._jc_cache[(domain, key)] = (found, now)
+        return found
+
+    def _jc_time(self, key: str) -> Optional[int]:
+        ent = self._jc_entity("sensor", key)
+        state = self.hass.states.get(ent) if ent else None
+        parsed = dt_util.parse_datetime(state.state) if state else None
+        return int(parsed.timestamp()) if parsed else None
+
+    def shabbat_in_effect(self) -> bool:
+        ent = self._jc_entity("binary_sensor", JC_ISSUR_KEY)
+        state = self.hass.states.get(ent) if ent else None
+        if state and state.state in ("on", "off"):
+            return state.state == "on"
+        candle, havdalah = self._jc_time(JC_CANDLE_KEY), self._jc_time(JC_HAVDALAH_KEY)
+        now = int(time.time())
+        return bool(candle and havdalah and candle <= now < havdalah)
+
+    def _shabbat_target(self) -> int:
+        return int(self.options.get("shabbat_target") or self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+
+    def _shabbat_plan(self) -> Optional[dict]:
+        """Upcoming pre-Shabbat/Yom Tov heat, if enabled and candle lighting is near."""
+        if not self.options.get("shabbat_enabled") or self._vacation_active():
+            return None
+        if self.options.get("mode", MODE_SCHEDULE) == MODE_OFF:
+            return None
+        candle = self._jc_time(JC_CANDLE_KEY)
+        now = int(time.time())
+        if not candle or candle <= now or candle - now > SHABBAT_LOOKAHEAD_H * 3600 or candle in self._shabbat_done:
+            return None
+        target = self._shabbat_target()
+        margin = int(self.options.get("auto_pre_heat_margin_min", DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN))
+        duration = (self.estimate_minutes_to_target(target) or 0) + margin
+        start = self.plan_preheat_start(candle, max(duration, margin), now)
+        return {"at": max(now, start), "ready_by": candle, "source": "shabbat", "label": "Shabbat",
+                "duration_min": max(duration, margin), "target_temp": target}
+
+    def _maybe_shabbat_preheat(self) -> bool:
+        plan = self._shabbat_plan()
+        if not plan or self._active or int(time.time()) < plan["at"]:
+            return False
+        self._shabbat_done.add(plan["ready_by"])
+        cur = self._read_temp()
+        if cur is not None and cur >= plan["target_temp"]:
+            return False
+        LOG.info("dud_shemesh: pre-Shabbat heat to %d°C", plan["target_temp"])
+        self.hass.async_create_task(self.async_start_heat(
+            source="shabbat", duration_min=plan["duration_min"],
+            target_temp=plan["target_temp"], note="pre-shabbat",
+        ))
+        return True
+
+    def shabbat_status(self) -> Optional[dict]:
+        if not self.options.get("shabbat_enabled"):
+            return None
+        in_effect = self.shabbat_in_effect()
+        return {
+            "in_effect": in_effect,
+            "locked": in_effect and bool(self.options.get("shabbat_lock", True)),
+            "candle_lighting": self._jc_time(JC_CANDLE_KEY),
+            "havdalah": self._jc_time(JC_HAVDALAH_KEY),
+            "calendar_found": self._jc_entity("sensor", JC_CANDLE_KEY) is not None,
+        }
 
     def _parse_windows(self) -> list[tuple[int, int, str]]:
         out = []
@@ -898,7 +1207,7 @@ class DudScheduler:
                     if ready <= now or ready_ts > end_ts or ready_ts < vacation_until:
                         continue
                     out.append({
-                        "at": max(int(now.timestamp()), ready_ts - (eta + margin) * 60),
+                        "at": max(int(now.timestamp()), self.plan_preheat_start(ready_ts, eta + margin, int(now.timestamp()))),
                         "ready_by": ready_ts, "source": "auto", "label": label,
                         "duration_min": eta + margin,
                         "target_temp": int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP),
@@ -916,6 +1225,8 @@ class DudScheduler:
                     "duration_min": 120,
                     "target_temp": int(self.options.get("legionella_temp", DEFAULT_LEGIONELLA_TEMP)),
                 })
+        if (plan := self._shabbat_plan()) and plan["ready_by"] <= end_ts:
+            out.append(plan)
         out.sort(key=lambda e: e["at"])
         return out
 
@@ -966,6 +1277,9 @@ class DudScheduler:
             "solar_rise_per_30min": round(rise, 2) if rise is not None else None,
             "solar_gaining": self._is_solar_gaining(),
             "weather_skip_active": self._weather_says_sunny(),
+            "shabbat": self.shabbat_status(),
+            "heat_rate_c_per_min": round(self.heat_rate()[0], 3),
+            "heat_rate_source": self.heat_rate()[1],
         }
 
     def solar_rise_per_30min(self) -> Optional[float]:

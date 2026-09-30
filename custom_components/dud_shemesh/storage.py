@@ -28,6 +28,7 @@ class DudStore:
             "active_boost": None,
             "last_legionella": 0,
             "energy_kwh_total": 0.0,
+            "heat_rate": {"c_per_min": None, "samples": 0},
         }
 
     async def async_load(self) -> None:
@@ -40,6 +41,7 @@ class DudStore:
             self._data["active_boost"] = data.get("active_boost")
             self._data["last_legionella"] = int(data.get("last_legionella", 0))
             self._data["energy_kwh_total"] = float(data.get("energy_kwh_total", 0.0))
+            self._data["heat_rate"] = data.get("heat_rate") or {"c_per_min": None, "samples": 0}
 
     async def _async_claim_legacy(self) -> Optional[dict]:
         """Move the pre-0.4.13 shared file (one key for all entries) to this entry."""
@@ -76,6 +78,14 @@ class DudStore:
     @property
     def energy_kwh_total(self) -> float:
         return float(self._data.get("energy_kwh_total", 0.0))
+
+    @property
+    def heat_rate(self) -> dict:
+        return dict(self._data.get("heat_rate") or {"c_per_min": None, "samples": 0})
+
+    async def async_set_heat_rate(self, c_per_min: float, samples: int) -> None:
+        self._data["heat_rate"] = {"c_per_min": round(float(c_per_min), 4), "samples": int(samples)}
+        await self.async_save()
 
     async def async_add_energy(self, kwh: float) -> None:
         if kwh <= 0:
@@ -153,6 +163,7 @@ class DudStore:
         note: str = "",
         started_at: Optional[int] = None,
         actual_min: Optional[float] = None,
+        cost: Optional[float] = None,
     ) -> None:
         entry = {
             "ts": int(time.time()),
@@ -167,6 +178,8 @@ class DudStore:
             entry["started_at"] = int(started_at)
         if actual_min is not None:
             entry["actual_min"] = actual_min
+        if cost is not None:
+            entry["cost"] = cost
         self._data["history"].insert(0, entry)
         if len(self._data["history"]) > MAX_HISTORY:
             self._data["history"] = self._data["history"][:MAX_HISTORY]

@@ -3,17 +3,23 @@
     "step": {
       "user": {
         "title": "דוד שמש",
-        "description": "בחר את ממסר החימום ואת חיישן טמפרטורת המים.",
+        "description": "בחרו את ממסר החימום ואת חיישן טמפרטורת המיכל. את השאר אפשר לשנות אחר כך בפאנל דוד שמש.",
         "data": {
           "heater_entity": "ממסר חימום (גוף חימום חשמלי)",
-          "temp_sensor": "חיישן טמפרטורת המיכל (אופציונלי)",
+          "temp_sensor": "חיישן טמפרטורת המיכל (רשות)",
           "target_temp": "טמפרטורה רצויה",
-          "heater_wattage_w": "הספק גוף החימום"
+          "heater_wattage_w": "הספק גוף החימום",
+          "tank_volume_l": "נפח המיכל (ליטר, 0 = לא ידוע)",
+          "tariff_ils_per_kwh": "מחיר חשמל (₪ לקוט״ש)",
+          "auto_comfort_windows": "צריך מים חמים ב- (למשל 06:30-08:00,19:00-21:00)"
         }
       }
     },
     "abort": {
-      "single_instance_allowed": "אינטגרציית דוד שמש כבר מוגדרת."
+      "single_instance_allowed": "דוד שמש כבר מוגדר."
+    },
+    "error": {
+      "invalid_windows": "יש להזין טווחים בפורמט HH:MM-HH:MM מופרדים בפסיקים, למשל 06:30-08:00,19:00-21:00."
     }
   },
   "options": {
@@ -21,14 +27,95 @@
       "init": {
         "title": "אפשרויות דוד שמש",
         "data": {
-          "heater_entity": "ממסר חימום",
-          "temp_sensor": "חיישן טמפרטורה",
+          "heater_entity": "ממסר חימום (גוף חימום חשמלי)",
+          "temp_sensor": "חיישן טמפרטורת המיכל (רשות)",
           "target_temp": "טמפרטורה רצויה",
           "heater_wattage_w": "הספק גוף החימום",
+          "tank_volume_l": "נפח המיכל (ליטר, 0 = לא ידוע)",
+          "tariff_ils_per_kwh": "מחיר חשמל (₪ לקוט״ש)",
+          "auto_comfort_windows": "צריך מים חמים ב- (למשל 06:30-08:00,19:00-21:00)",
           "mode": "מצב",
-          "legionella_enabled": "מחזור נגד ליגיונלה",
-          "legionella_temp": "טמפרטורת מחזור נגד ליגיונלה",
-          "legionella_days": "תדירות מחזור (ימים)"
+          "legionella_enabled": "מחזור חיטוי ליגיונלה",
+          "legionella_temp": "טמפרטורת חיטוי ליגיונלה",
+          "legionella_days": "תדירות חיטוי (ימים)"
+        }
+      }
+    },
+    "error": {
+      "invalid_windows": "יש להזין טווחים בפורמט HH:MM-HH:MM מופרדים בפסיקים, למשל 06:30-08:00,19:00-21:00."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "מצב",
+        "state": {
+          "ready": "מוכן",
+          "heating": "מחמם",
+          "waiting": "ממתין",
+          "solar": "סולארי",
+          "cold": "קר"
+        }
+      },
+      "tank_temperature": {
+        "name": "טמפרטורת המיכל"
+      },
+      "minutes_to_target": {
+        "name": "דקות עד היעד"
+      },
+      "energy": {
+        "name": "אנרגיה"
+      }
+    },
+    "binary_sensor": {
+      "heating_active": {
+        "name": "מחמם"
+      },
+      "solar_gaining": {
+        "name": "חימום סולארי"
+      },
+      "sensor_problem": {
+        "name": "תקלה בחיישן הטמפרטורה"
+      }
+    },
+    "button": {
+      "boost": {
+        "name": "חימום {minutes} דק׳"
+      },
+      "stop": {
+        "name": "הפסק חימום"
+      },
+      "legionella_now": {
+        "name": "חיטוי ליגיונלה עכשיו"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "מצב",
+        "state": {
+          "auto": "אוטומטי",
+          "schedule": "לוח זמנים",
+          "off": "כבוי"
+        }
+      }
+    },
+    "switch": {
+      "heating": {
+        "name": "חמם עכשיו"
+      },
+      "vacation": {
+        "name": "חופשה"
+      },
+      "legionella": {
+        "name": "מחזור חיטוי ליגיונלה"
+      }
+    },
+    "water_heater": {
+      "dud": {
+        "state": {
+          "auto": "אוטומטי",
+          "schedule": "לוח זמנים",
+          "off": "כבוי"
         }
       }
     }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — a real appliance in Home Assistant
+
+- **#28 Native entities**: one device per water heater with a `water_heater` entity (target, mode, away = vacation, on/off), boost / stop / anti-Legionella buttons, mode select, heat-now / vacation / anti-Legionella switches, heating / solar / sensor-problem binary sensors. Entity names in English and Hebrew.
+- **#31 Learned heat rate**: °C/min learned per tank from clean runs (moving average), physics fallback from tank volume × wattage; drives minutes-to-target, auto pre-heat, "hot by" and Shabbat pre-heat.
+- **#46 Tank picker** in the panel header for multi-tank setups (remembered per browser); new `dud_shemesh/list_entries` WS command.
+- **#33 Actionable notifications** for companion-app targets (Heat now, Boost 1 h, Keep 30 min, Turn off) and a new **cold warning** 60 min before a comfort window when nothing is planned. Notification texts in Hebrew when HA's language is Hebrew. New events `manual_on`, `cold_warning`.
+- **#32 Forecast-based solar skip**: hourly forecast (condition / cloud cover over the next N hours) or a solar production forecast sensor, instead of only the current weather state.
+- **#34 Time-of-use tariffs**: price windows, auto pre-heat moves to the cheapest hours that still finish in time (small standby-loss penalty), per-run `cost` in history, TOU-aware Reports and savings.
+- **#35 Shabbat mode** (Jewish Calendar integration): pre-heat for candle lighting, optional control lock and quiet notifications until havdalah.
+- **#37 Settings rework**: tabbed sections, entity suggestions for weather / calendar / solar sensors, row editors for comfort windows and price windows, calendar settings exposed; config flow asks for tank volume, price and comfort windows with validation. Settings gear shown to admins only.
+- **#43 Temperature chart** from HA history (24 h / 7 days) with heating runs shaded.
+- **#45 Assist**: ready-made English and Hebrew sentence files (`docs/assist/`), new `DudShemeshStatus` intent ("is there hot water?").
+- Permissions: vacation joins mode and target as an everyday control any user may change; the anti-Legionella switch requires an admin when a person uses it.
+
 ## 0.5.0 — hot water you can plan on
 
 Bugs

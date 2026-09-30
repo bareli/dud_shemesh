@@ -15,7 +15,7 @@ from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
@@ -27,6 +27,20 @@ from .const import (
     CONF_CALENDAR_KEYWORDS,
     CONF_CALENDAR_LOOKAHEAD_MIN,
     CONF_FAIL_DETECTION_ENABLED,
+    CONF_FORECAST_CLOUD_MAX,
+    CONF_PREFER_CHEAP,
+    CONF_SHABBAT_ENABLED,
+    CONF_SHABBAT_LOCK,
+    CONF_SHABBAT_QUIET,
+    CONF_SHABBAT_TARGET,
+    CONF_TARIFF_WINDOWS,
+    DEFAULT_PREFER_CHEAP,
+    CONF_FORECAST_HOURS,
+    CONF_SOLAR_FORECAST_ENTITY,
+    CONF_SOLAR_FORECAST_MIN,
+    DEFAULT_FORECAST_CLOUD_MAX,
+    DEFAULT_FORECAST_HOURS,
+    DEFAULT_SOLAR_FORECAST_MIN,
     CONF_NOTIFY_EVENTS,
     CONF_NOTIFY_TARGETS,
     CONF_FAIL_DETECTION_MINUTES,
@@ -87,13 +101,22 @@ from .const import (
     SERVICE_SET_MODE,
     SERVICE_SET_TARGET,
     SERVICE_UPDATE_SCHEDULE,
+    ACTION_PREFIX,
 )
+from .entity import async_update_options
 from .scheduler import DudScheduler
 from .storage import DudStore
 
 LOG = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SELECT,
+    Platform.SWITCH,
+    Platform.WATER_HEATER,
+]
 
 PANEL_URL_PATH = "dud-shemesh"
 PANEL_STATIC_URL = "/dud_shemesh_panel"
@@ -244,9 +267,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "max_tank_temp": entry.options.get(CONF_MAX_TANK_TEMP, DEFAULT_MAX_TANK_TEMP),
         "sensor_stale_min": entry.options.get(CONF_SENSOR_STALE_MIN, DEFAULT_SENSOR_STALE_MIN),
         "tank_volume_l": entry.options.get(CONF_TANK_VOLUME_L, DEFAULT_TANK_VOLUME_L),
+        "forecast_hours": entry.options.get(CONF_FORECAST_HOURS, DEFAULT_FORECAST_HOURS),
+        "forecast_cloud_max": entry.options.get(CONF_FORECAST_CLOUD_MAX, DEFAULT_FORECAST_CLOUD_MAX),
+        "solar_forecast_entity": entry.options.get(CONF_SOLAR_FORECAST_ENTITY, ""),
+        "solar_forecast_min": entry.options.get(CONF_SOLAR_FORECAST_MIN, DEFAULT_SOLAR_FORECAST_MIN),
+        "tariff_windows": entry.options.get(CONF_TARIFF_WINDOWS, ""),
+        "prefer_cheap": entry.options.get(CONF_PREFER_CHEAP, DEFAULT_PREFER_CHEAP),
+        "shabbat_enabled": entry.options.get(CONF_SHABBAT_ENABLED, False),
+        "shabbat_target": entry.options.get(CONF_SHABBAT_TARGET, 0),
+        "shabbat_lock": entry.options.get(CONF_SHABBAT_LOCK, True),
+        "shabbat_quiet": entry.options.get(CONF_SHABBAT_QUIET, True),
     }
 
-    scheduler = DudScheduler(hass, store, options)
+    scheduler = DudScheduler(hass, store, options, entry.entry_id)
     await scheduler.async_start()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
@@ -257,6 +290,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     _async_register_services(hass)
+    _async_register_notification_actions(hass)
     _async_register_ws_commands(hass)
     await _async_register_panel(hass)
     await _async_register_card_resource(hass)
@@ -279,12 +313,6 @@ def _resolve_entry(hass: HomeAssistant, entry_id: str | None = None) -> dict:
         if e.entry_id in domain_data:
             return domain_data[e.entry_id]
     raise HomeAssistantError("Dud Shemesh integration not loaded")
-
-
-def _update_entry_options(hass: HomeAssistant, entry: ConfigEntry, patch: dict) -> dict:
-    new_options = {**entry.options, **patch}
-    hass.config_entries.async_update_entry(entry, options=new_options)
-    return new_options
 
 
 _ENTRY_ID = vol.Optional("entry_id")
@@ -354,11 +382,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     async def _svc_set_mode(call: ServiceCall) -> None:
         data = _resolve_entry(hass, call.data.get("entry_id"))
-        _update_entry_options(hass, data["entry"], {CONF_MODE: call.data["mode"]})
+        async_update_options(hass, data["entry"], {CONF_MODE: call.data["mode"]})
 
     async def _svc_set_target(call: ServiceCall) -> None:
         data = _resolve_entry(hass, call.data.get("entry_id"))
-        _update_entry_options(hass, data["entry"], {CONF_TARGET_TEMP: call.data["temp"]})
+        async_update_options(hass, data["entry"], {CONF_TARGET_TEMP: call.data["temp"]})
 
     async def _svc_add_schedule(call: ServiceCall) -> ServiceResponse:
         data = _resolve_entry(hass, call.data.get("entry_id"))
@@ -436,7 +464,51 @@ def _async_register_services(hass: HomeAssistant) -> None:
     )
 
 
+ACTIONS_UNSUB_KEY = f"{DOMAIN}_actions_unsub"
+
+
+def _async_register_notification_actions(hass: HomeAssistant) -> None:
+    """Handle buttons pressed on Dud Shemesh mobile_app notifications."""
+    if hass.data.get(ACTIONS_UNSUB_KEY):
+        return
+
+    async def _on_action(event) -> None:
+        parts = str(event.data.get("action", "")).split(":")
+        if len(parts) != 4 or parts[0] != ACTION_PREFIX:
+            return
+        _, cmd, arg, entry_id = parts
+        try:
+            scheduler = _resolve_entry(hass, entry_id or None)["scheduler"]
+        except HomeAssistantError:
+            return
+        if cmd in ("boost", "extend"):
+            await scheduler.async_boost(max(1, min(720, int(arg or 60))))
+        elif cmd == "stop":
+            await scheduler.async_stop_heat("cancelled")
+
+    hass.data[ACTIONS_UNSUB_KEY] = hass.bus.async_listen("mobile_app_notification_action", _on_action)
+
+
 _INTENT_REGISTERED_KEY = f"{DOMAIN}_intent_registered"
+
+
+def _status_speech(hass: HomeAssistant, status: dict) -> str:
+    """One spoken sentence: temperature, heating/ready state, showers."""
+    he = str(hass.config.language or "").lower().startswith("he")
+    temp = status.get("current_temp")
+    target = status.get("target_temp")
+    showers = status.get("showers_available")
+    if temp is None:
+        base = "אין קריאת טמפרטורה מהמיכל" if he else "No tank temperature reading"
+    elif status.get("active"):
+        base = f"הדוד מחמם, המים ב-{temp:.0f} מעלות" if he else f"Heating now, the water is {temp:.0f} degrees"
+    elif target is not None and temp >= target:
+        base = f"המים חמים, {temp:.0f} מעלות" if he else f"The water is hot, {temp:.0f} degrees"
+    else:
+        base = f"המים ב-{temp:.0f} מעלות" if he else f"The water is {temp:.0f} degrees"
+    if showers is not None:
+        base += f", מספיק לכ-{showers} מקלחות" if he else f", enough for about {showers} showers"
+    return base + "."
 
 
 def _async_register_intents(hass: HomeAssistant) -> None:
@@ -476,8 +548,22 @@ def _async_register_intents(hass: HomeAssistant) -> None:
                 response.async_set_speech("Water heater stopped")
                 return response
 
+        class _StatusIntent(intent.IntentHandler):
+            intent_type = "DudShemeshStatus"
+            description = "Is the water hot? Tank temperature, showers and heating state"
+            async def async_handle(self, intent_obj):
+                response = intent_obj.create_response()
+                try:
+                    data = _resolve_entry(hass)
+                except HomeAssistantError:
+                    response.async_set_speech("Dud Shemesh integration not loaded.")
+                    return response
+                response.async_set_speech(_status_speech(hass, data["scheduler"].now_status()))
+                return response
+
         intent.async_register(hass, _BoostIntent())
         intent.async_register(hass, _StopIntent())
+        intent.async_register(hass, _StatusIntent())
         hass.data[_INTENT_REGISTERED_KEY] = True
     except Exception as e:
         LOG.debug("intents not registered: %s", e)
@@ -491,8 +577,9 @@ def _ws_float(lo: float, hi: float):
     return vol.All(vol.Coerce(float), vol.Range(min=lo, max=hi))
 
 
-# Keys any user may change from the panel/card; everything else needs admin.
-WS_PUBLIC_OPTION_KEYS = {CONF_MODE, CONF_TARGET_TEMP}
+# Everyday controls any user may change (also exposed as entities); everything
+# else is configuration and needs an admin.
+WS_PUBLIC_OPTION_KEYS = {CONF_MODE, CONF_TARGET_TEMP, CONF_VACATION_UNTIL, CONF_VACATION_HOLD_TEMP}
 
 WS_OPTION_SCHEMA = {
     vol.Optional(CONF_TARGET_TEMP): _ws_int(20, 80),
@@ -524,6 +611,16 @@ WS_OPTION_SCHEMA = {
     vol.Optional(CONF_MAX_TANK_TEMP): _ws_int(50, 90),
     vol.Optional(CONF_SENSOR_STALE_MIN): _ws_int(0, 1440),
     vol.Optional(CONF_TANK_VOLUME_L): _ws_int(0, 1000),
+    vol.Optional(CONF_FORECAST_HOURS): _ws_int(0, 12),
+    vol.Optional(CONF_FORECAST_CLOUD_MAX): _ws_int(0, 100),
+    vol.Optional(CONF_SOLAR_FORECAST_ENTITY): vol.Any(None, cv.string),
+    vol.Optional(CONF_SOLAR_FORECAST_MIN): _ws_float(0, 1000),
+    vol.Optional(CONF_TARIFF_WINDOWS): vol.Any(None, cv.string),
+    vol.Optional(CONF_PREFER_CHEAP): cv.boolean,
+    vol.Optional(CONF_SHABBAT_ENABLED): cv.boolean,
+    vol.Optional(CONF_SHABBAT_TARGET): vol.Any(0, _ws_int(20, 80)),
+    vol.Optional(CONF_SHABBAT_LOCK): cv.boolean,
+    vol.Optional(CONF_SHABBAT_QUIET): cv.boolean,
 }
 
 
@@ -590,9 +687,20 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
         if not connection.user.is_admin and set(patch) - WS_PUBLIC_OPTION_KEYS:
             connection.send_error(msg["id"], "unauthorized", "Only administrators can change these settings")
             return
-        new_options = _update_entry_options(hass_inner, data["entry"], patch)
+        new_options = async_update_options(hass_inner, data["entry"], patch)
         connection.send_result(msg["id"], {"options": new_options})
 
+    @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/list_entries"})
+    @callback
+    def _ws_list_entries(hass_inner, connection, msg):
+        loaded = hass_inner.data.get(DOMAIN) or {}
+        connection.send_result(msg["id"], [
+            {"entry_id": e.entry_id, "title": e.title}
+            for e in hass_inner.config_entries.async_entries(DOMAIN)
+            if e.entry_id in loaded
+        ])
+
+    websocket_api.async_register_command(hass, _ws_list_entries)
     websocket_api.async_register_command(hass, _ws_get_state)
     websocket_api.async_register_command(hass, _ws_update_options)
     hass.data[WS_REGISTERED_KEY] = True
@@ -615,6 +723,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for svc in ALL_SERVICES:
             if hass.services.has_service(DOMAIN, svc):
                 hass.services.async_remove(DOMAIN, svc)
+        if unsub := hass.data.pop(ACTIONS_UNSUB_KEY, None):
+            unsub()
         if hass.data.pop(PANEL_REGISTERED_KEY, False):
             with suppress(Exception):
                 async_remove_panel(hass, PANEL_URL_PATH)
