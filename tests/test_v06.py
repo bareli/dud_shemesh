@@ -320,3 +320,27 @@ async def test_shabbat_preheat_status_and_quiet(hass, freezer):
     await sch.async_boost(10)
     await hass.async_block_till_done()
     assert calls == []  # quiet during Shabbat
+
+
+# 37
+async def test_config_flow_validates_windows_and_stores_setup_fields(hass):
+    from custom_components.dud_shemesh.const import DOMAIN
+    await setup_heater(hass)
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    base = {"heater_entity": "input_boolean.dud", "target_temp": 55, "heater_wattage_w": 2400,
+            "tank_volume_l": 150, "tariff_ils_per_kwh": 0.55}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**base, "auto_comfort_windows": "6:30 to 8"})
+    assert result["type"] == "form" and result["errors"] == {"auto_comfort_windows": "invalid_windows"}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**base, "auto_comfort_windows": "06:30-08:00, 19:00-21:00"})
+    assert result["type"] == "create_entry"
+    assert result["options"]["tank_volume_l"] == 150 and result["options"]["tariff_ils_per_kwh"] == 0.55
+
+
+async def test_options_flow_clears_windows_and_keeps_panel_keys(hass):
+    await setup_heater(hass)
+    entry = make_entry(hass, auto_comfort_windows="06:30-08:00", notify_targets=["mobile_app_x"])
+    await setup_entry(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"heater_entity": "input_boolean.dud"})
+    await hass.async_block_till_done()
+    assert entry.options["auto_comfort_windows"] == "" and entry.options["notify_targets"] == ["mobile_app_x"]

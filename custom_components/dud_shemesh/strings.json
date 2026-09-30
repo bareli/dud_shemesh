@@ -17,6 +17,9 @@
     },
     "abort": {
       "single_instance_allowed": "Dud Shemesh is already configured."
+    },
+    "error": {
+      "invalid_windows": "Use HH:MM-HH:MM ranges separated by commas, e.g. 06:30-08:00,19:00-21:00."
     }
   },
   "options": {
@@ -37,6 +40,9 @@
           "legionella_days": "Anti-Legionella interval (days)"
         }
       }
+    },
+    "error": {
+      "invalid_windows": "Use HH:MM-HH:MM ranges separated by commas, e.g. 06:30-08:00,19:00-21:00."
     }
   },
   "entity": {

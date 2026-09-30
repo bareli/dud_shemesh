@@ -285,6 +285,14 @@ const STYLES = `
 }
 .chip input { margin: 0; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.settings-tabs { display: flex; gap: 4px; overflow-x: auto; margin: 0 0 14px; padding-bottom: 4px; border-bottom: 1px solid var(--ds-border); }
+.settings-tab {
+  flex: none; padding: 6px 10px; border-radius: 8px; border: none; background: transparent;
+  color: var(--ds-muted); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.settings-tab.active { background: var(--ds-bg); color: var(--ds-text); font-weight: 600; }
+.range-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.range-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-card); color: var(--ds-text); font: inherit; }
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5);
   display: flex; align-items: center; justify-content: center; z-index: 100;
@@ -372,7 +380,7 @@ const I18N = {
     today_word: "Today", tomorrow_word: "Tomorrow",
     legionella_in: (d) => `🦠 ${d}d to anti-Legionella`, legionella_due: "🦠 Anti-Legionella due",
     vacation_active: (d, t) => `🏖 Vacation — ${d}d left, holding ${t}°C`, vacation_end: "End",
-    shabbat_locked: (t) => `🕯 Shabbat mode — controls locked until ${t}`, shabbat_next: (t) => `🕯 Hot for Shabbat by ${t}`,
+    shabbat_locked: (t) => `🕯 Shabbat mode — controls locked until ${t}`,
     today: "Today", lg_heated: "Heated", lg_scheduled: "Schedule", lg_planned: "Planned",
     schedules: "Schedules", add: "+ Add", no_schedules: "No schedules yet. Tap + Add to create one.",
     edit_btn: "Edit", delete_confirm: "Delete this schedule?", skip_once: "Skip next", undo_skip: "Undo skip",
@@ -394,24 +402,34 @@ const I18N = {
     oc_skipped_user: "Skipped by you", oc_completed: "Completed", oc_target_reached: "Target reached",
     oc_cancelled: "Cancelled", oc_safety: "Safety stops",
     dur_hm: (h, m) => `${h}h ${String(m).padStart(2, "0")}m`, dur_m: (m) => `${m}m`,
+    tab_basics: "Basics", tab_auto: "Automation", tab_solar: "Solar", tab_safety: "Safety",
+    tab_away: "Away & Shabbat", tab_price: "Price", tab_notify: "Notifications", add_range: "+ Add",
+    s_windows_hint: "When you want hot water. Auto mode pre-heats for these times, and you get a warning if nothing is planned.",
+    h_calendar: "Calendar", s_calendar_ent: "Calendar entity", s_calendar_kw: "Keywords", s_calendar_look: "Look ahead (min)",
+    s_calendar_hint: "Events whose title contains a keyword heat the tank. Put 45m or 55c in the description for duration / target.",
+    s_fc_hours: "Forecast hours (0 = current weather only)", s_fc_cloud: "Max cloud cover (%)",
+    s_fc_hint: "A schedule is skipped when most of the next hours are sunny.",
+    s_solar_ent: "Solar forecast sensor (optional)", s_solar_min_fc: "Skip when at least",
+    h_shabbat: "Shabbat mode",
+    shabbat_hint: "Uses the Jewish Calendar integration: heats before candle lighting and locks the controls until havdalah.",
+    shabbat_no_calendar: "Jewish Calendar integration not found. Add it in Settings → Devices & services.",
+    s_shabbat_target: "Shabbat target (°C, 0 = normal target)", s_shabbat_lock: "Lock the controls during Shabbat",
+    s_shabbat_quiet: "No notifications during Shabbat",
+    s_tariff_windows: "Time-of-use prices", s_tariff_windows_hint: "Hours with a different price (e.g. a night discount). Other hours use the base price.",
+    s_prefer_cheap: "Move auto pre-heat to cheaper hours",
     s_target: "Target temperature (°C)", s_boost: "Boost buttons (min, comma-separated)",
-    s_wattage: "Heater wattage (W)", s_tariff: "Tariff (₪/kWh)", s_tank: "Tank volume (L)",
-    s_tank_hint: "Used for the showers estimate. 0 = hide.",
-    adv_shown: "Advanced (shown)", adv_hidden: "Advanced (hidden)", show: "Show", hide: "Hide",
-    h_auto: "Auto mode", s_windows: "Comfort windows (HH:MM-HH:MM, comma-separated)",
-    s_margin: "Pre-heat margin (min before window)",
-    h_weather: "Weather skip", s_weather_ent: "Weather entity", s_weather_states: "Skip when state is (comma-separated)",
+    s_wattage: "Heater wattage (W)", s_tariff: "Base price (₪/kWh)", s_tank: "Tank volume (L)",
+    s_tank_hint: "Used for the showers estimate. 0 = hide.", s_windows: "Hot water needed at",
+    s_margin: "Pre-heat margin (min before window)", s_weather_ent: "Weather entity", s_weather_states: "Skip when state is (comma-separated)",
     s_weather_hint: "Never applied between sunset and sunrise.",
-    h_solar: "Solar tracking", s_solar_min: "Track window (min)", s_solar_thr: "Rise threshold (°C / 30min)",
-    h_safety: "Safety", s_manual_max: "Auto-off after manual turn-on (min, 0 = off)",
+    h_solar: "Solar tracking", s_solar_min: "Track window (min)", s_solar_thr: "Rise threshold (°C / 30min)", s_manual_max: "Auto-off after manual turn-on (min, 0 = off)",
     s_max_run: "Maximum run length (min)", s_max_temp: "Over-temperature cutoff (°C)",
     s_stale: "Treat sensor as stale after (min, 0 = never)",
     h_fail: "Fail detection", s_check_after: "Check after (min)", s_min_rise: "Min rise (°C)",
     h_legionella: "Anti-Legionella", s_cycle_temp: "Cycle temp (°C)", s_every_days: "Every N days",
     h_vacation: "Vacation mode",
     vacation_hint: "Until this date/time, schedules and auto-runs are suspended. Tank is held at hold-temp to prevent mold.",
-    s_vac_until: "Active until (clear to disable)", s_vac_hold: "Hold temperature (°C)",
-    h_notify: "Notifications", notify_hint: "Pick notify services and which events send a push.",
+    s_vac_until: "Active until (clear to disable)", s_vac_hold: "Hold temperature (°C)", notify_hint: "Pick notify services and which events send a push.",
     s_notify_services: "Notify services", s_notify_when: "Send when", no_notify: "No notify.* services detected.",
     ev_heat_start: "Heat started", ev_heat_end: "Heat ended", ev_target_reached: "Target reached",
     ev_heat_not_rising: "Heater fault", ev_skipped_solar: "Skipped (solar)", ev_skipped_weather: "Skipped (weather)",
@@ -438,7 +456,7 @@ const I18N = {
     today_word: "היום", tomorrow_word: "מחר",
     legionella_in: (d) => `🦠 עוד ${d} ימים לחיטוי ליגיונלה`, legionella_due: "🦠 נדרש חיטוי ליגיונלה",
     vacation_active: (d, t) => `🏖 חופשה — עוד ${d} ימים, שמירה על ${t}°C`, vacation_end: "סיום",
-    shabbat_locked: (t) => `🕯 מצב שבת — הבקרה נעולה עד ${t}`, shabbat_next: (t) => `🕯 חם לשבת עד ${t}`,
+    shabbat_locked: (t) => `🕯 מצב שבת — הבקרה נעולה עד ${t}`,
     today: "היום", lg_heated: "חומם", lg_scheduled: "לוח זמנים", lg_planned: "מתוכנן",
     schedules: "לוחות זמנים", add: "+ הוספה", no_schedules: "אין עדיין לוחות זמנים. לחצו + הוספה.",
     edit_btn: "עריכה", delete_confirm: "למחוק את לוח הזמנים?", skip_once: "דלג על הבא", undo_skip: "בטל דילוג",
@@ -460,24 +478,34 @@ const I18N = {
     oc_skipped_user: "דולג על ידך", oc_completed: "הושלם", oc_target_reached: "הגיע ליעד",
     oc_cancelled: "בוטל", oc_safety: "עצירות בטיחות",
     dur_hm: (h, m) => `${h} ש׳ ${String(m).padStart(2, "0")} ד׳`, dur_m: (m) => `${m} ד׳`,
+    tab_basics: "בסיסי", tab_auto: "אוטומציה", tab_solar: "סולארי", tab_safety: "בטיחות",
+    tab_away: "חופשה ושבת", tab_price: "מחיר", tab_notify: "התראות", add_range: "+ הוספה",
+    s_windows_hint: "מתי צריך מים חמים. במצב אוטומטי הדוד מחמם מראש לזמנים האלה, ותקבלו התראה אם שום חימום לא מתוכנן.",
+    h_calendar: "יומן", s_calendar_ent: "ישות יומן", s_calendar_kw: "מילות מפתח", s_calendar_look: "טווח בדיקה (דק׳)",
+    s_calendar_hint: "אירועים שהכותרת שלהם מכילה מילת מפתח מחממים את המיכל. כתבו 45m או 55c בתיאור לקביעת משך / יעד.",
+    s_fc_hours: "שעות תחזית (0 = מזג אוויר נוכחי בלבד)", s_fc_cloud: "כיסוי עננים מרבי (%)",
+    s_fc_hint: "לוח זמנים ידולג כשרוב השעות הקרובות שמשיות.",
+    s_solar_ent: "חיישן תחזית סולארית (רשות)", s_solar_min_fc: "דלג כשהערך לפחות",
+    h_shabbat: "מצב שבת",
+    shabbat_hint: "משתמש באינטגרציית הלוח העברי: מחמם לפני הדלקת נרות ונועל את הבקרה עד ההבדלה.",
+    shabbat_no_calendar: "אינטגרציית הלוח העברי (Jewish Calendar) לא נמצאה. הוסיפו אותה בהגדרות ← מכשירים ושירותים.",
+    s_shabbat_target: "יעד לשבת (°C, 0 = היעד הרגיל)", s_shabbat_lock: "נעילת הבקרה בשבת",
+    s_shabbat_quiet: "ללא התראות בשבת",
+    s_tariff_windows: "מחירים לפי שעות", s_tariff_windows_hint: "שעות עם מחיר שונה (למשל הנחת לילה). בשאר השעות חל מחיר הבסיס.",
+    s_prefer_cheap: "הזזת חימום מקדים לשעות זולות",
     s_target: "טמפרטורת יעד (°C)", s_boost: "כפתורי הפעלה מהירה (דק׳, מופרד בפסיקים)",
-    s_wattage: "הספק גוף החימום (וואט)", s_tariff: "תעריף (₪ לקוט״ש)", s_tank: "נפח המיכל (ליטר)",
-    s_tank_hint: "משמש להערכת מספר המקלחות. 0 = להסתיר.",
-    adv_shown: "מתקדם (מוצג)", adv_hidden: "מתקדם (מוסתר)", show: "הצג", hide: "הסתר",
-    h_auto: "מצב אוטומטי", s_windows: "חלונות נוחות (HH:MM-HH:MM, מופרד בפסיקים)",
-    s_margin: "מרווח חימום מקדים (דק׳ לפני החלון)",
-    h_weather: "דילוג לפי מזג אוויר", s_weather_ent: "ישות מזג אוויר", s_weather_states: "דלג כשהמצב הוא (מופרד בפסיקים)",
+    s_wattage: "הספק גוף החימום (וואט)", s_tariff: "מחיר בסיס (₪ לקוט״ש)", s_tank: "נפח המיכל (ליטר)",
+    s_tank_hint: "משמש להערכת מספר המקלחות. 0 = להסתיר.", s_windows: "צריך מים חמים ב-",
+    s_margin: "מרווח חימום מקדים (דק׳ לפני החלון)", s_weather_ent: "ישות מזג אוויר", s_weather_states: "דלג כשהמצב הוא (מופרד בפסיקים)",
     s_weather_hint: "לא חל בין השקיעה לזריחה.",
-    h_solar: "מעקב סולארי", s_solar_min: "חלון מעקב (דק׳)", s_solar_thr: "סף עלייה (°C ל-30 דק׳)",
-    h_safety: "בטיחות", s_manual_max: "כיבוי אוטומטי אחרי הדלקה ידנית (דק׳, 0 = כבוי)",
+    h_solar: "מעקב סולארי", s_solar_min: "חלון מעקב (דק׳)", s_solar_thr: "סף עלייה (°C ל-30 דק׳)", s_manual_max: "כיבוי אוטומטי אחרי הדלקה ידנית (דק׳, 0 = כבוי)",
     s_max_run: "משך הפעלה מקסימלי (דק׳)", s_max_temp: "ניתוק בטמפרטורת יתר (°C)",
     s_stale: "חיישן נחשב לא מעודכן אחרי (דק׳, 0 = אף פעם)",
     h_fail: "זיהוי תקלה", s_check_after: "בדיקה אחרי (דק׳)", s_min_rise: "עלייה מינימלית (°C)",
     h_legionella: "חיטוי ליגיונלה", s_cycle_temp: "טמפ׳ מחזור (°C)", s_every_days: "כל N ימים",
     h_vacation: "מצב חופשה",
     vacation_hint: "עד התאריך הזה לוחות הזמנים והחימום האוטומטי מושהים. המיכל נשמר בטמפ׳ שמירה נגד עובש.",
-    s_vac_until: "פעיל עד (ריק = כבוי)", s_vac_hold: "טמפ׳ שמירה (°C)",
-    h_notify: "התראות", notify_hint: "בחרו שירותי התראה ואילו אירועים ישלחו התראה.",
+    s_vac_until: "פעיל עד (ריק = כבוי)", s_vac_hold: "טמפ׳ שמירה (°C)", notify_hint: "בחרו שירותי התראה ואילו אירועים ישלחו התראה.",
     s_notify_services: "שירותי התראה", s_notify_when: "לשלוח כאשר", no_notify: "לא נמצאו שירותי notify.*",
     ev_heat_start: "חימום התחיל", ev_heat_end: "חימום הסתיים", ev_target_reached: "הגיע ליעד",
     ev_heat_not_rising: "תקלה בגוף החימום", ev_skipped_solar: "דולג (שמש)", ev_skipped_weather: "דולג (מזג אוויר)",
@@ -806,7 +834,8 @@ class DudPanel extends HTMLElement {
       ]),
       el("div", { style: "display:flex;align-items:center;gap:6px;" }, [
         this._renderTankPicker(),
-        el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: this._t("settings"), "aria-label": this._t("settings") }, "⚙"),
+        (this._hass.user && this._hass.user.is_admin === false) ? null
+          : el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: this._t("settings"), "aria-label": this._t("settings") }, "⚙"),
       ]),
     ]));
 
@@ -1407,19 +1436,60 @@ class DudPanel extends HTMLElement {
     const field = (label, input, hint) => el("label", { class: "field" }, [el("span", {}, label), input, hint ? el("div", { class: "hint" }, hint) : null]);
     const check = (label, input) => el("label", { class: "check" }, [input, label]);
     const box = (checked) => { const c = el("input", { type: "checkbox" }); c.checked = !!checked; return c; };
+    const row2 = (a, b) => el("div", { class: "field-row" }, [a, b]);
+    // Entity picker: free text with suggestions for one domain.
+    const listId = (d) => `ds-list-${d}`;
+    const picker = (domain, value, placeholder) => el("input", { type: "text", value: String(value || ""), placeholder, list: listId(domain), dir: "ltr" });
+    const datalists = ["weather", "calendar", "sensor"].map(d => el("datalist", { id: listId(d) },
+      Object.keys((this._hass && this._hass.states) || {}).filter(id => id.startsWith(d + ".")).sort()
+        .map(id => el("option", { value: id }, (this._hass.states[id].attributes || {}).friendly_name || id))));
 
+    // Row editors for "HH:MM-HH:MM" and "HH:MM-HH:MM@price" lists.
+    const rangeEditor = (raw, withPrice) => {
+      const rows = el("div", { class: "ranges" });
+      const add = (start = "", end = "", price = "") => {
+        const s = el("input", { type: "time", value: start, dir: "ltr" });
+        const e = el("input", { type: "time", value: end, dir: "ltr" });
+        const p = withPrice ? el("input", { type: "number", step: "0.01", min: "0", value: price, placeholder: "₪/kWh" }) : null;
+        const r = el("div", { class: "range-row" }, [s, el("span", {}, "–"), e, p,
+          el("button", { type: "button", class: "btn small danger", "aria-label": "remove", onClick: () => r.remove() }, "✕")]);
+        rows.appendChild(r);
+      };
+      String(raw || "").split(",").map(x => x.trim()).filter(Boolean).forEach(chunk => {
+        const m = chunk.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})(?:@([\d.]+))?$/);
+        if (m) add(m[1].padStart(5, "0"), m[2].padStart(5, "0"), m[3] || "");
+      });
+      const wrap = el("div", {}, [rows, el("button", { type: "button", class: "btn small", onClick: () => add() }, t("add_range"))]);
+      wrap.serialize = () => [...rows.children].map(r => {
+        const [s, , e, p] = r.children;
+        if (!s.value || !e.value) return null;
+        if (withPrice) return p.value !== "" ? `${s.value}-${e.value}@${p.value}` : null;
+        return `${s.value}-${e.value}`;
+      }).filter(Boolean).join(",");
+      return wrap;
+    };
+
+    // Basics
     const target = num(opts.target_temp ?? 55, { min: "20", max: "80" });
-    const wattage = num(opts.heater_wattage_w ?? 2400, { min: "500", max: "10000", step: "100" });
-    const tariff = num(opts.tariff_ils_per_kwh ?? 0.62, { min: "0", max: "10", step: "0.01" });
-    const tank = num(opts.tank_volume_l ?? 0, { min: "0", max: "1000", step: "10" });
     const boostBtns = el("input", { type: "text", value: String(opts.boost_buttons || "30,60,120"), placeholder: "30,60,120", dir: "ltr" });
-
-    const comfort = el("input", { type: "text", value: String(opts.auto_comfort_windows || ""), placeholder: "06:30-08:00,19:00-21:00", dir: "ltr" });
+    const wattage = num(opts.heater_wattage_w ?? 2400, { min: "500", max: "10000", step: "100" });
+    const tank = num(opts.tank_volume_l ?? 0, { min: "0", max: "1000", step: "10" });
+    // Automation
+    const comfort = rangeEditor(opts.auto_comfort_windows, false);
     const preMargin = num(opts.auto_pre_heat_margin_min ?? 5, { min: "0", max: "60" });
-    const weatherEnt = el("input", { type: "text", value: String(opts.weather_entity || ""), placeholder: "weather.forecast_home", dir: "ltr" });
+    const calendarEnt = picker("calendar", opts.calendar_entity, "calendar.family");
+    const calendarKw = el("input", { type: "text", value: String(opts.calendar_keywords || ""), placeholder: "dud,water,חם,מים,דוד" });
+    const calendarLook = num(opts.calendar_lookahead_min ?? 10, { min: "1", max: "120" });
+    // Solar
+    const weatherEnt = picker("weather", opts.weather_entity, "weather.forecast_home");
     const weatherStates = el("input", { type: "text", value: String(opts.weather_skip_states || "sunny"), dir: "ltr" });
+    const fcHours = num(opts.forecast_hours ?? 0, { min: "0", max: "12" });
+    const fcCloud = num(opts.forecast_cloud_max ?? 40, { min: "0", max: "100" });
+    const solarEnt = picker("sensor", opts.solar_forecast_entity, "sensor.energy_next_hour");
+    const solarMinFc = num(opts.solar_forecast_min ?? 1, { min: "0", step: "0.1" });
     const solarMin = num(opts.solar_track_minutes ?? 30, { min: "5", max: "180" });
     const solarThr = num(opts.solar_rise_threshold ?? 1.0, { min: "0.1", max: "10", step: "0.1" });
+    // Safety
     const manualMax = num(opts.manual_on_max_min ?? 60, { min: "0", max: "720" });
     const maxRun = num(opts.max_run_min ?? 180, { min: "30", max: "720" });
     const maxTemp = num(opts.max_tank_temp ?? 75, { min: "50", max: "90" });
@@ -1430,14 +1500,20 @@ class DudPanel extends HTMLElement {
     const legEnabled = box(opts.legionella_enabled);
     const legTemp = num(opts.legionella_temp ?? 60, { min: "55", max: "80" });
     const legDays = num(opts.legionella_days ?? 7, { min: "1", max: "30" });
-
+    // Away & Shabbat
     const vacationUntilTs = parseInt(opts.vacation_until || 0, 10);
-    const vacInput = el("input", { type: "datetime-local", dir: "ltr",
-      value: vacationUntilTs ? toLocalInputValue(vacationUntilTs) : "" });
+    const vacInput = el("input", { type: "datetime-local", dir: "ltr", value: vacationUntilTs ? toLocalInputValue(vacationUntilTs) : "" });
     const vacHold = num(opts.vacation_hold_temp ?? 30, { min: "20", max: "50" });
-
-    const availableTargets = this._state.notify_services || [];
-    const availableEvents = this._state.notify_events || [];
+    const shEnabled = box(opts.shabbat_enabled);
+    const shTarget = num(opts.shabbat_target ?? 0, { min: "0", max: "80" });
+    const shLock = box(opts.shabbat_lock ?? true);
+    const shQuiet = box(opts.shabbat_quiet ?? true);
+    const shStatus = (this._state.status || {}).shabbat;
+    // Price
+    const tariff = num(opts.tariff_ils_per_kwh ?? 0.62, { min: "0", max: "10", step: "0.01" });
+    const tariffWins = rangeEditor(opts.tariff_windows, true);
+    const preferCheap = box(opts.prefer_cheap ?? true);
+    // Notifications
     const toSet = v => new Set(Array.isArray(v) ? v : (v ? String(v).split(",").map(s => s.trim()).filter(Boolean) : []));
     const currentTargets = toSet(opts.notify_targets);
     const currentEvents = toSet(opts.notify_events);
@@ -1448,69 +1524,103 @@ class DudPanel extends HTMLElement {
       return el("label", { class: "chip" }, [cb, label]);
     };
     const targetsWrap = el("div", { class: "chips", dir: "ltr" });
+    const availableTargets = this._state.notify_services || [];
     if (!availableTargets.length) targetsWrap.appendChild(el("div", { class: "empty" }, t("no_notify")));
     availableTargets.forEach(name => targetsWrap.appendChild(chip(name, currentTargets, name)));
     const eventsWrap = el("div", { class: "chips" });
-    availableEvents.forEach(ev => eventsWrap.appendChild(chip(t("ev_" + ev), currentEvents, ev)));
+    (this._state.notify_events || []).forEach(ev => eventsWrap.appendChild(chip(t("ev_" + ev), currentEvents, ev)));
 
-    const advancedSection = el("div", { style: this._showAdvanced ? "" : "display:none;" }, [
-      el("h4", {}, t("h_safety")),
-      field(t("s_manual_max"), manualMax),
-      el("div", { class: "field-row" }, [field(t("s_max_run"), maxRun), field(t("s_max_temp"), maxTemp)]),
-      field(t("s_stale"), stale),
-      el("h4", {}, t("h_auto")),
-      field(t("s_windows"), comfort),
-      field(t("s_margin"), preMargin),
-      el("h4", {}, t("h_weather")),
-      field(t("s_weather_ent"), weatherEnt),
-      field(t("s_weather_states"), weatherStates, t("s_weather_hint")),
-      el("h4", {}, t("h_solar")),
-      el("div", { class: "field-row" }, [field(t("s_solar_min"), solarMin), field(t("s_solar_thr"), solarThr)]),
-      el("h4", {}, t("h_fail")),
-      check(t("enabled"), failEn),
-      el("div", { class: "field-row" }, [field(t("s_check_after"), failMin), field(t("s_min_rise"), failRise)]),
-      el("h4", {}, t("h_legionella")),
-      check(t("enabled"), legEnabled),
-      el("div", { class: "field-row" }, [field(t("s_cycle_temp"), legTemp), field(t("s_every_days"), legDays)]),
-      el("h4", {}, t("h_vacation")),
-      el("div", { class: "hint", style: "margin-bottom:8px;" }, t("vacation_hint")),
-      field(t("s_vac_until"), vacInput),
-      field(t("s_vac_hold"), vacHold),
-      el("h4", {}, t("h_notify")),
-      el("div", { class: "hint", style: "margin-bottom:8px;" }, t("notify_hint")),
-      el("div", { class: "field" }, [el("span", {}, t("s_notify_services")), targetsWrap]),
-      el("div", { class: "field" }, [el("span", {}, t("s_notify_when")), eventsWrap]),
-    ]);
-
-    const advLabel = el("strong", {}, this._showAdvanced ? t("adv_shown") : t("adv_hidden"));
-    const advBtn = el("button", { type: "button" }, this._showAdvanced ? t("hide") : t("show"));
-    advBtn.addEventListener("click", () => {
-      this._showAdvanced = !this._showAdvanced;
-      advancedSection.style.display = this._showAdvanced ? "" : "none";
-      advLabel.textContent = this._showAdvanced ? t("adv_shown") : t("adv_hidden");
-      advBtn.textContent = this._showAdvanced ? t("hide") : t("show");
-    });
-
-    const fields = [
-      field(t("s_target"), target),
-      field(t("s_boost"), boostBtns),
-      el("div", { class: "field-row" }, [field(t("s_wattage"), wattage), field(t("s_tariff"), tariff)]),
-      field(t("s_tank"), tank, t("s_tank_hint")),
-      el("div", { class: "advanced-toggle" }, [advLabel, advBtn]),
-      advancedSection,
+    const sections = [
+      ["tab_basics", [
+        field(t("s_target"), target),
+        field(t("s_boost"), boostBtns),
+        row2(field(t("s_wattage"), wattage), field(t("s_tank"), tank)),
+        el("div", { class: "hint" }, t("s_tank_hint")),
+      ]],
+      ["tab_auto", [
+        el("div", { class: "field" }, [el("span", {}, t("s_windows")), comfort, el("div", { class: "hint" }, t("s_windows_hint"))]),
+        field(t("s_margin"), preMargin),
+        el("h4", {}, t("h_calendar")),
+        field(t("s_calendar_ent"), calendarEnt),
+        row2(field(t("s_calendar_kw"), calendarKw), field(t("s_calendar_look"), calendarLook)),
+        el("div", { class: "hint" }, t("s_calendar_hint")),
+      ]],
+      ["tab_solar", [
+        field(t("s_weather_ent"), weatherEnt),
+        field(t("s_weather_states"), weatherStates, t("s_weather_hint")),
+        row2(field(t("s_fc_hours"), fcHours), field(t("s_fc_cloud"), fcCloud)),
+        el("div", { class: "hint" }, t("s_fc_hint")),
+        row2(field(t("s_solar_ent"), solarEnt), field(t("s_solar_min_fc"), solarMinFc)),
+        el("h4", {}, t("h_solar")),
+        row2(field(t("s_solar_min"), solarMin), field(t("s_solar_thr"), solarThr)),
+      ]],
+      ["tab_safety", [
+        field(t("s_manual_max"), manualMax),
+        row2(field(t("s_max_run"), maxRun), field(t("s_max_temp"), maxTemp)),
+        field(t("s_stale"), stale),
+        el("h4", {}, t("h_fail")),
+        check(t("enabled"), failEn),
+        row2(field(t("s_check_after"), failMin), field(t("s_min_rise"), failRise)),
+        el("h4", {}, t("h_legionella")),
+        check(t("enabled"), legEnabled),
+        row2(field(t("s_cycle_temp"), legTemp), field(t("s_every_days"), legDays)),
+      ]],
+      ["tab_away", [
+        el("h4", { style: "margin-top:0;" }, t("h_vacation")),
+        el("div", { class: "hint", style: "margin-bottom:8px;" }, t("vacation_hint")),
+        field(t("s_vac_until"), vacInput),
+        field(t("s_vac_hold"), vacHold),
+        el("h4", {}, t("h_shabbat")),
+        el("div", { class: "hint", style: "margin-bottom:8px;" },
+          shStatus && !shStatus.calendar_found ? t("shabbat_no_calendar") : t("shabbat_hint")),
+        check(t("enabled"), shEnabled),
+        field(t("s_shabbat_target"), shTarget),
+        check(t("s_shabbat_lock"), shLock),
+        check(t("s_shabbat_quiet"), shQuiet),
+      ]],
+      ["tab_price", [
+        field(t("s_tariff"), tariff),
+        el("div", { class: "field" }, [el("span", {}, t("s_tariff_windows")), tariffWins, el("div", { class: "hint" }, t("s_tariff_windows_hint"))]),
+        check(t("s_prefer_cheap"), preferCheap),
+      ]],
+      ["tab_notify", [
+        el("div", { class: "hint", style: "margin-bottom:8px;" }, t("notify_hint")),
+        el("div", { class: "field" }, [el("span", {}, t("s_notify_services")), targetsWrap]),
+        el("div", { class: "field" }, [el("span", {}, t("s_notify_when")), eventsWrap]),
+      ]],
     ];
 
-    this._showModal(t("settings"), fields, async () => {
+    const tabBar = el("div", { class: "settings-tabs", role: "tablist" });
+    const panes = sections.map(([key, content], i) => {
+      const pane = el("div", { class: "settings-pane", role: "tabpanel", style: i ? "display:none;" : "" }, content);
+      const btn = el("button", { type: "button", class: "settings-tab" + (i ? "" : " active"), role: "tab", "aria-selected": i ? "false" : "true" }, t(key));
+      btn.addEventListener("click", () => {
+        [...tabBar.children].forEach((b, j) => { b.classList.toggle("active", j === i); b.setAttribute("aria-selected", j === i ? "true" : "false"); });
+        panes.forEach((p, j) => { p.style.display = j === i ? "" : "none"; });
+      });
+      tabBar.appendChild(btn);
+      return pane;
+    });
+
+    this._showModal(t("settings"), [...datalists, tabBar, ...panes], async () => {
       await this._saveOptions({
         target_temp: numOr(target.value, 55, parseInt),
-        heater_wattage_w: numOr(wattage.value, 2400, parseInt),
-        tariff_ils_per_kwh: numOr(tariff.value, 0.62),
-        tank_volume_l: numOr(tank.value, 0, parseInt),
         boost_buttons: boostBtns.value.trim() || "30,60,120",
-        auto_comfort_windows: comfort.value.trim(),
+        heater_wattage_w: numOr(wattage.value, 2400, parseInt),
+        tank_volume_l: numOr(tank.value, 0, parseInt),
+        auto_comfort_windows: comfort.serialize(),
         auto_pre_heat_margin_min: numOr(preMargin.value, 5, parseInt),
+        calendar_entity: calendarEnt.value.trim(),
+        calendar_keywords: calendarKw.value.trim(),
+        calendar_lookahead_min: numOr(calendarLook.value, 10, parseInt),
         weather_entity: weatherEnt.value.trim(),
         weather_skip_states: weatherStates.value.trim(),
+        forecast_hours: numOr(fcHours.value, 0, parseInt),
+        forecast_cloud_max: numOr(fcCloud.value, 40, parseInt),
+        solar_forecast_entity: solarEnt.value.trim(),
+        solar_forecast_min: numOr(solarMinFc.value, 1),
+        solar_track_minutes: numOr(solarMin.value, 30, parseInt),
+        solar_rise_threshold: numOr(solarThr.value, 1.0),
         manual_on_max_min: numOr(manualMax.value, 60, parseInt),
         max_run_min: numOr(maxRun.value, 180, parseInt),
         max_tank_temp: numOr(maxTemp.value, 75, parseInt),
@@ -1518,13 +1628,18 @@ class DudPanel extends HTMLElement {
         fail_detection_enabled: failEn.checked,
         fail_detection_minutes: numOr(failMin.value, 8, parseInt),
         fail_detection_rise: numOr(failRise.value, 1.0),
-        solar_track_minutes: numOr(solarMin.value, 30, parseInt),
-        solar_rise_threshold: numOr(solarThr.value, 1.0),
         legionella_enabled: legEnabled.checked,
         legionella_temp: numOr(legTemp.value, 60, parseInt),
         legionella_days: numOr(legDays.value, 7, parseInt),
         vacation_until: vacInput.value ? Math.floor(new Date(vacInput.value).getTime() / 1000) : 0,
         vacation_hold_temp: numOr(vacHold.value, 30, parseInt),
+        shabbat_enabled: shEnabled.checked,
+        shabbat_target: numOr(shTarget.value, 0, parseInt),
+        shabbat_lock: shLock.checked,
+        shabbat_quiet: shQuiet.checked,
+        tariff_ils_per_kwh: numOr(tariff.value, 0.62),
+        tariff_windows: tariffWins.serialize(),
+        prefer_cheap: preferCheap.checked,
         notify_targets: Array.from(currentTargets),
         notify_events: Array.from(currentEvents),
       });
