@@ -87,6 +87,7 @@ const STYLES = `
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .empty { color: var(--secondary-text-color); font-size: 13px; padding: 8px 0; font-style: italic; }
+.error { color: var(--error-color, #e53935); font-size: 12px; margin-top: 8px; }
 `;
 
 const STATUS_LABELS = { ready: "Ready", heating: "Heating", waiting: "Waiting", solar: "Solar", cold: "Cold" };
@@ -197,7 +198,10 @@ class DudCard extends HTMLElement {
     }
     const remaining = Math.max(0, this._endsInEndsAt - this._serverNow());
     this._endsInValueEl.textContent = this._formatRemaining(remaining);
-    if (remaining === 0) setTimeout(() => this._refresh(), 200);
+    if (remaining === 0 && this._endsRefreshedFor !== this._endsInEndsAt) {
+      this._endsRefreshedFor = this._endsInEndsAt;
+      setTimeout(() => this._refresh(), 200);
+    }
   }
 
   async _subscribeHeaterState() {
@@ -214,12 +218,26 @@ class DudCard extends HTMLElement {
         "state_changed"
       );
     } catch (e) {
-      console.warn("[dud_shemesh-card] heater state subscription failed", e);
+      // Subscription is an optimisation; the 5 s poll keeps the card current.
     }
   }
 
   _renderError(e) {
-    this._root.innerHTML = `<div class="card"><div class="empty">Dud Shemesh: ${e.message || "not loaded"}</div></div>`;
+    const card = document.createElement("div");
+    card.className = "card";
+    const msg = document.createElement("div");
+    msg.className = "empty";
+    msg.textContent = `Dud Shemesh: ${(e && e.message) || "not loaded"}`;
+    card.appendChild(msg);
+    this._root.innerHTML = "";
+    this._root.appendChild(card);
+  }
+
+  _showError(e) {
+    this._error = (e && e.message) || String(e);
+    clearTimeout(this._errorTimer);
+    this._errorTimer = setTimeout(() => { this._error = null; this._render(); }, 4000);
+    this._render();
   }
 
   async _call(service, data) {
@@ -227,7 +245,7 @@ class DudCard extends HTMLElement {
       await this._hass.callService("dud_shemesh", service, data || {});
       setTimeout(() => this._refresh(), 300);
     } catch (e) {
-      console.error("dud_shemesh card:", e);
+      this._showError(e);
     }
   }
 
@@ -236,7 +254,7 @@ class DudCard extends HTMLElement {
       await this._hass.callWS(Object.assign({ type: "dud_shemesh/update_options" }, patch));
       setTimeout(() => this._refresh(), 300);
     } catch (e) {
-      console.error("dud_shemesh card:", e);
+      this._showError(e);
     }
   }
 
@@ -320,6 +338,13 @@ class DudCard extends HTMLElement {
         modeWrap.appendChild(pill);
       });
       card.appendChild(modeWrap);
+    }
+
+    if (this._error) {
+      const err = document.createElement("div");
+      err.className = "error";
+      err.textContent = this._error;
+      card.appendChild(err);
     }
 
     this._root.innerHTML = "";

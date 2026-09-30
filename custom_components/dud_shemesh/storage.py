@@ -13,9 +13,15 @@ from .const import STORAGE_KEY, STORAGE_VERSION
 MAX_HISTORY = 500
 
 
+def entry_storage_key(entry_id: str) -> str:
+    return f"{STORAGE_KEY}.{entry_id}"
+
+
 class DudStore:
-    def __init__(self, hass: HomeAssistant):
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    def __init__(self, hass: HomeAssistant, entry_id: str, claim_legacy: bool = False):
+        self._hass = hass
+        self._claim_legacy = claim_legacy
+        self._store = Store(hass, STORAGE_VERSION, entry_storage_key(entry_id))
         self._data: dict[str, Any] = {
             "schedules": [],
             "history": [],
@@ -25,11 +31,26 @@ class DudStore:
 
     async def async_load(self) -> None:
         data = await self._store.async_load()
+        if data is None and self._claim_legacy:
+            data = await self._async_claim_legacy()
         if data:
             self._data["schedules"] = data.get("schedules", [])
             self._data["history"] = data.get("history", [])
             self._data["active_boost"] = data.get("active_boost")
             self._data["last_legionella"] = int(data.get("last_legionella", 0))
+
+    async def _async_claim_legacy(self) -> Optional[dict]:
+        """Move the pre-0.4.13 shared file (one key for all entries) to this entry."""
+        legacy = Store(self._hass, STORAGE_VERSION, STORAGE_KEY)
+        data = await legacy.async_load()
+        if not data:
+            return None
+        await self._store.async_save(data)
+        await legacy.async_remove()
+        return data
+
+    async def async_remove(self) -> None:
+        await self._store.async_remove()
 
     async def async_save(self) -> None:
         await self._store.async_save(self._data)
@@ -118,6 +139,8 @@ class DudStore:
         starting_temp: Optional[float] = None,
         ending_temp: Optional[float] = None,
         note: str = "",
+        started_at: Optional[int] = None,
+        actual_min: Optional[float] = None,
     ) -> None:
         entry = {
             "ts": int(time.time()),
@@ -128,6 +151,10 @@ class DudStore:
             "ending_temp": ending_temp,
             "note": note,
         }
+        if started_at is not None:
+            entry["started_at"] = int(started_at)
+        if actual_min is not None:
+            entry["actual_min"] = actual_min
         self._data["history"].insert(0, entry)
         if len(self._data["history"]) > MAX_HISTORY:
             self._data["history"] = self._data["history"][:MAX_HISTORY]

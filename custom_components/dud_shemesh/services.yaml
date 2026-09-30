@@ -2,6 +2,13 @@ boost:
   name: Boost
   description: Manually start the heater for N minutes.
   fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
     minutes:
       name: Minutes
       required: false
@@ -18,10 +25,26 @@ cancel_boost:
   name: Cancel boost
   description: Stop the heater immediately.
 
+  fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
+
 set_mode:
   name: Set mode
   description: Switch automatic / scheduled / off mode.
   fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
     mode:
       name: Mode
       required: true
@@ -36,6 +59,13 @@ set_target_temp:
   name: Set target temperature
   description: Set the desired tank temperature.
   fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
     temp:
       name: Temperature
       required: true
@@ -50,6 +80,13 @@ add_schedule:
   name: Add schedule
   description: Add a recurring heating schedule.
   fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
     time:
       name: Time
       required: true
@@ -98,6 +135,13 @@ update_schedule:
   name: Update schedule
   description: Patch an existing schedule by id.
   fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
     schedule_id:
       name: Schedule ID
       required: true
@@ -147,6 +191,13 @@ update_schedule:
 remove_schedule:
   name: Remove schedule
   fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
     schedule_id:
       name: Schedule ID
       required: true
@@ -157,6 +208,23 @@ legionella_run_now:
   name: Run anti-Legionella cycle now
   description: Force a 60 °C+ heating cycle to suppress bacteria.
 
+  fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh
+
 list_config:
   name: List config
   description: Returns schedules, history, active heat run, options, and current status.
+  fields:
+    entry_id:
+      name: Water heater
+      description: Dud Shemesh instance to target. Defaults to the first one.
+      required: false
+      selector:
+        config_entry:
+          integration: dud_shemesh

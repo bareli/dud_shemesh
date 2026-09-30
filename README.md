@@ -69,7 +69,7 @@ Compact gauge + boost + mode for embedding on any dashboard view.
 - **Notifications**: pick `notify.*` services + which events push (heat_start/end, target reached, fail, skips, anti-Legionella).
 
 **Multi-instance**
-- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler. (Panel UI shows the first entry; multi-tank picker planned for v0.5.)
+- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler and has its own storage file (`.storage/dud_shemesh.data.<entry_id>`). All services take an optional `entry_id`; without it they act on the first entry. (Panel UI shows the first entry; multi-tank picker planned for v0.5.)
 
 **i18n**
 - English + Hebrew config strings, **right-to-left** panel layout when HA language is `he`.
@@ -117,13 +117,17 @@ Minimum HA version: **2024.7.0**.
 | `dud_shemesh.legionella_run_now` | Force a 60 °C+ heating cycle. |
 | `dud_shemesh.list_config` | Returns schedules, history, active run, options, current status (response service). |
 
+Every service accepts an optional `entry_id` to target a specific water heater when the integration is added more than once.
+
 ## Events
 
 | Event | When | Data |
 | ----- | ---- | ---- |
 | `dud_shemesh_heat_started` | Heater is turned on | `source`, `duration_min`, `target_temp`, `starting_temp` |
-| `dud_shemesh_heat_finished` | Heater turned off | `source`, `status` (`completed` / `target_reached` / `cancelled`), `duration_min`, `starting_temp`, `ending_temp` |
+| `dud_shemesh_heat_finished` | Heater turned off | `source`, `status` (`completed` / `target_reached` / `cancelled` / `manual_stop` / `external_stop` / `superseded` / `voice` / `expired_during_downtime`), `duration_min` (planned), `actual_min` (element on-time), `starting_temp`, `ending_temp` |
 | `dud_shemesh_target_reached` | Tank hit configured target during a heat cycle | `source`, `temp`, `target_temp` |
+
+Anti-Legionella is only recorded as done when the tank actually reaches the cycle temperature (`target_reached`).
 
 ## Sensors
 

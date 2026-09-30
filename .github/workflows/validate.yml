@@ -24,3 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          pip install -r requirements_test.txt
+          python - <<'PY' > frontend_req.txt
+          import json, os, homeassistant
+          m = os.path.join(os.path.dirname(homeassistant.__file__), "components", "frontend", "manifest.json")
+          print(next(r for r in json.load(open(m))["requirements"] if r.startswith("home-assistant-frontend")))
+          PY
+          pip install -r frontend_req.txt
+      - name: Pytest
+        run: pytest -q

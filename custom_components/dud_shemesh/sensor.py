@@ -1,10 +1,14 @@
 """Sensor entities for Dud Shemesh."""
 from __future__ import annotations
 
-import time
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -72,7 +76,9 @@ class DudStatusSensor(_BaseSensor):
 class DudTempSensor(_BaseSensor):
     _attr_name = "Tank temperature"
     _attr_icon = "mdi:thermometer"
-    _attr_native_unit_of_measurement = "°C"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
     def __init__(self, entry_id, scheduler):
         super().__init__(entry_id, scheduler)
@@ -87,7 +93,9 @@ class DudTempSensor(_BaseSensor):
 class DudMinutesToTargetSensor(_BaseSensor):
     _attr_name = "Minutes to target"
     _attr_icon = "mdi:timer-sand"
-    _attr_native_unit_of_measurement = "min"
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
     def __init__(self, entry_id, scheduler):
         super().__init__(entry_id, scheduler)

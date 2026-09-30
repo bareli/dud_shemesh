@@ -179,7 +179,11 @@ async def _async_register_card_resource(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    store = DudStore(hass)
+    entries = hass.config_entries.async_entries(DOMAIN)
+    store = DudStore(
+        hass, entry.entry_id,
+        claim_legacy=bool(entries) and entries[0].entry_id == entry.entry_id,
+    )
     await store.async_load()
 
     options = {
@@ -224,44 +228,129 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await scheduler.async_start()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "entry": entry,
         "store": store,
         "scheduler": scheduler,
         "options": options,
     }
 
+    _async_register_services(hass)
+    _async_register_ws_commands(hass)
+    await _async_register_panel(hass)
+    await _async_register_card_resource(hass)
+    _async_register_intents(hass)
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    return True
+
+
+def _resolve_entry(hass: HomeAssistant, entry_id: str | None = None) -> dict:
+    """Loaded entry data for entry_id, or the first loaded entry in config order."""
+    domain_data = hass.data.get(DOMAIN) or {}
+    if entry_id:
+        data = domain_data.get(entry_id)
+        if not data:
+            raise HomeAssistantError(f"Dud Shemesh entry {entry_id} is not loaded")
+        return data
+    for e in hass.config_entries.async_entries(DOMAIN):
+        if e.entry_id in domain_data:
+            return domain_data[e.entry_id]
+    raise HomeAssistantError("Dud Shemesh integration not loaded")
+
+
+def _update_entry_options(hass: HomeAssistant, entry: ConfigEntry, patch: dict) -> dict:
+    new_options = {**entry.options, **patch}
+    hass.config_entries.async_update_entry(entry, options=new_options)
+    return new_options
+
+
+_ENTRY_ID = vol.Optional("entry_id")
+_INT_MINUTES = vol.All(vol.Coerce(int), vol.Range(min=1, max=720))
+_INT_TEMP = vol.All(vol.Coerce(int), vol.Range(min=20, max=80))
+
+SCHEMA_BOOST = vol.Schema({
+    _ENTRY_ID: cv.string,
+    vol.Optional("minutes", default=60): _INT_MINUTES,
+})
+SCHEMA_ENTRY_ONLY = vol.Schema({_ENTRY_ID: cv.string})
+SCHEMA_SET_MODE = vol.Schema({
+    _ENTRY_ID: cv.string,
+    vol.Required("mode"): vol.In([MODE_AUTO, MODE_SCHEDULE, MODE_OFF]),
+})
+SCHEMA_SET_TARGET = vol.Schema({
+    _ENTRY_ID: cv.string,
+    vol.Required("temp"): _INT_TEMP,
+})
+SCHEMA_ADD_SCHEDULE = vol.Schema({
+    _ENTRY_ID: cv.string,
+    vol.Required("time"): _hhmm,
+    vol.Required("days"): vol.All(cv.ensure_list, [vol.In(DAY_NAMES)]),
+    vol.Optional("duration_minutes", default=60): _INT_MINUTES,
+    vol.Optional("target_temp"): _INT_TEMP,
+    vol.Optional("name", default=""): cv.string,
+    vol.Optional("enabled", default=True): cv.boolean,
+})
+SCHEMA_UPDATE_SCHEDULE = vol.Schema({
+    _ENTRY_ID: cv.string,
+    vol.Required("schedule_id"): cv.string,
+    vol.Optional("time"): _hhmm,
+    vol.Optional("days"): vol.All(cv.ensure_list, [vol.In(DAY_NAMES)]),
+    vol.Optional("duration_minutes"): _INT_MINUTES,
+    vol.Optional("target_temp"): _INT_TEMP,
+    vol.Optional("name"): cv.string,
+    vol.Optional("enabled"): cv.boolean,
+})
+SCHEMA_REMOVE_SCHEDULE = vol.Schema({
+    _ENTRY_ID: cv.string,
+    vol.Required("schedule_id"): cv.string,
+})
+
+ALL_SERVICES = (
+    SERVICE_BOOST, SERVICE_CANCEL_BOOST, SERVICE_SET_MODE, SERVICE_SET_TARGET,
+    SERVICE_ADD_SCHEDULE, SERVICE_UPDATE_SCHEDULE, SERVICE_REMOVE_SCHEDULE,
+    SERVICE_LEGIONELLA_NOW, SERVICE_LIST,
+)
+
+
+def _async_register_services(hass: HomeAssistant) -> None:
+    """Register domain services once; each call targets entry_id or the first entry."""
+    if hass.services.has_service(DOMAIN, SERVICE_BOOST):
+        return
+
     async def _svc_boost(call: ServiceCall) -> None:
-        minutes = int(call.data.get("minutes", 60))
+        data = _resolve_entry(hass, call.data.get("entry_id"))
         try:
-            await scheduler.async_boost(minutes)
+            await data["scheduler"].async_boost(call.data["minutes"])
         except Exception as e:
             raise HomeAssistantError(str(e)) from e
 
     async def _svc_cancel_boost(call: ServiceCall) -> None:
-        await scheduler.async_stop_heat(reason="cancelled")
+        data = _resolve_entry(hass, call.data.get("entry_id"))
+        await data["scheduler"].async_stop_heat(reason="cancelled")
 
     async def _svc_set_mode(call: ServiceCall) -> None:
-        mode = call.data["mode"]
-        new_options = dict(entry.options)
-        new_options[CONF_MODE] = mode
-        hass.config_entries.async_update_entry(entry, options=new_options)
+        data = _resolve_entry(hass, call.data.get("entry_id"))
+        _update_entry_options(hass, data["entry"], {CONF_MODE: call.data["mode"]})
 
     async def _svc_set_target(call: ServiceCall) -> None:
-        new_options = dict(entry.options)
-        new_options[CONF_TARGET_TEMP] = int(call.data["temp"])
-        hass.config_entries.async_update_entry(entry, options=new_options)
+        data = _resolve_entry(hass, call.data.get("entry_id"))
+        _update_entry_options(hass, data["entry"], {CONF_TARGET_TEMP: call.data["temp"]})
 
     async def _svc_add_schedule(call: ServiceCall) -> ServiceResponse:
-        sched = await store.async_add_schedule(
+        data = _resolve_entry(hass, call.data.get("entry_id"))
+        sched = await data["store"].async_add_schedule(
             name=call.data.get("name", ""),
             days_mask=_days_to_mask(call.data["days"]),
             time_hhmm=call.data["time"],
-            duration_min=int(call.data.get("duration_minutes", 60)),
+            duration_min=call.data["duration_minutes"],
             target_temp=call.data.get("target_temp"),
-            enabled=bool(call.data.get("enabled", True)),
+            enabled=call.data.get("enabled", True),
         )
         return {"schedule": sched}
 
     async def _svc_update_schedule(call: ServiceCall) -> ServiceResponse:
+        data = _resolve_entry(hass, call.data.get("entry_id"))
         fields: dict[str, Any] = {}
         for k_in, k_out in [
             ("name", "name"), ("time", "time_hhmm"),
@@ -273,63 +362,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 fields[k_out] = call.data[k_in]
         if "days" in call.data:
             fields["days_mask"] = _days_to_mask(call.data["days"])
-        sched = await store.async_update_schedule(call.data["schedule_id"], **fields)
+        sched = await data["store"].async_update_schedule(call.data["schedule_id"], **fields)
         if sched is None:
             raise HomeAssistantError("schedule not found")
         return {"schedule": sched}
 
     async def _svc_remove_schedule(call: ServiceCall) -> None:
-        await store.async_remove_schedule(call.data["schedule_id"])
+        data = _resolve_entry(hass, call.data.get("entry_id"))
+        await data["store"].async_remove_schedule(call.data["schedule_id"])
 
     async def _svc_legionella_now(call: ServiceCall) -> None:
-        target = int(options.get("legionella_temp", DEFAULT_LEGIONELLA_TEMP))
-        await scheduler.async_start_heat(
+        data = _resolve_entry(hass, call.data.get("entry_id"))
+        target = int(data["options"].get("legionella_temp", DEFAULT_LEGIONELLA_TEMP))
+        await data["scheduler"].async_start_heat(
             source="legionella", duration_min=120, target_temp=target,
             note="manual anti-legionella",
         )
 
     async def _svc_list(call: ServiceCall) -> ServiceResponse:
+        data = _resolve_entry(hass, call.data.get("entry_id"))
         return {
-            "schedules": store.schedules,
-            "active": scheduler.active,
-            "history": store.history[:50],
-            "options": options,
-            "status": scheduler.now_status(),
+            "entry_id": data["entry"].entry_id,
+            "schedules": data["store"].schedules,
+            "active": data["scheduler"].active,
+            "history": data["store"].history[:50],
+            "options": data["options"],
+            "status": data["scheduler"].now_status(),
         }
 
-    SCHEMA_BOOST = vol.Schema({
-        vol.Optional("minutes", default=60): vol.All(int, vol.Range(min=1, max=720)),
-    })
-    SCHEMA_NO_ARGS = vol.Schema({})
-    SCHEMA_SET_MODE = vol.Schema({
-        vol.Required("mode"): vol.In([MODE_AUTO, MODE_SCHEDULE, MODE_OFF]),
-    })
-    SCHEMA_SET_TARGET = vol.Schema({
-        vol.Required("temp"): vol.All(int, vol.Range(min=20, max=80)),
-    })
-    SCHEMA_ADD_SCHEDULE = vol.Schema({
-        vol.Required("time"): _hhmm,
-        vol.Required("days"): vol.All(cv.ensure_list, [vol.In(DAY_NAMES)]),
-        vol.Optional("duration_minutes", default=60): vol.All(int, vol.Range(min=1, max=720)),
-        vol.Optional("target_temp"): vol.All(int, vol.Range(min=20, max=80)),
-        vol.Optional("name", default=""): cv.string,
-        vol.Optional("enabled", default=True): cv.boolean,
-    })
-    SCHEMA_UPDATE_SCHEDULE = vol.Schema({
-        vol.Required("schedule_id"): cv.string,
-        vol.Optional("time"): _hhmm,
-        vol.Optional("days"): vol.All(cv.ensure_list, [vol.In(DAY_NAMES)]),
-        vol.Optional("duration_minutes"): vol.All(int, vol.Range(min=1, max=720)),
-        vol.Optional("target_temp"): vol.All(int, vol.Range(min=20, max=80)),
-        vol.Optional("name"): cv.string,
-        vol.Optional("enabled"): cv.boolean,
-    })
-    SCHEMA_REMOVE_SCHEDULE = vol.Schema({
-        vol.Required("schedule_id"): cv.string,
-    })
-
     hass.services.async_register(DOMAIN, SERVICE_BOOST, _svc_boost, schema=SCHEMA_BOOST)
-    hass.services.async_register(DOMAIN, SERVICE_CANCEL_BOOST, _svc_cancel_boost, schema=SCHEMA_NO_ARGS)
+    hass.services.async_register(DOMAIN, SERVICE_CANCEL_BOOST, _svc_cancel_boost, schema=SCHEMA_ENTRY_ONLY)
     hass.services.async_register(DOMAIN, SERVICE_SET_MODE, _svc_set_mode, schema=SCHEMA_SET_MODE)
     hass.services.async_register(DOMAIN, SERVICE_SET_TARGET, _svc_set_target, schema=SCHEMA_SET_TARGET)
     hass.services.async_register(
@@ -343,19 +405,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(DOMAIN, SERVICE_REMOVE_SCHEDULE, _svc_remove_schedule, schema=SCHEMA_REMOVE_SCHEDULE)
-    hass.services.async_register(DOMAIN, SERVICE_LEGIONELLA_NOW, _svc_legionella_now, schema=SCHEMA_NO_ARGS)
+    hass.services.async_register(DOMAIN, SERVICE_LEGIONELLA_NOW, _svc_legionella_now, schema=SCHEMA_ENTRY_ONLY)
     hass.services.async_register(
-        DOMAIN, SERVICE_LIST, _svc_list, supports_response=SupportsResponse.ONLY
+        DOMAIN, SERVICE_LIST, _svc_list, schema=SCHEMA_ENTRY_ONLY,
+        supports_response=SupportsResponse.ONLY,
     )
-
-    _async_register_ws_commands(hass)
-    await _async_register_panel(hass)
-    await _async_register_card_resource(hass)
-    _async_register_intents(hass)
-
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-    return True
 
 
 _INTENT_REGISTERED_KEY = f"{DOMAIN}_intent_registered"
@@ -369,20 +423,18 @@ def _async_register_intents(hass: HomeAssistant) -> None:
 
         class _BoostIntent(intent.IntentHandler):
             intent_type = "DudShemeshBoost"
-            slot_schema = {vol.Optional("minutes"): vol.All(int, vol.Range(min=1, max=720))}
+            slot_schema = {vol.Optional("minutes"): _INT_MINUTES}
             description = "Boost the water heater"
             async def async_handle(self, intent_obj):
                 slots = self.async_validate_slots(intent_obj.slots)
                 minutes = int(slots.get("minutes", {}).get("value", 60))
-                domain_data = hass.data.get(DOMAIN, {})
-                if not domain_data:
-                    response = intent_obj.create_response()
+                response = intent_obj.create_response()
+                try:
+                    data = _resolve_entry(hass)
+                except HomeAssistantError:
                     response.async_set_speech("Dud Shemesh integration not loaded.")
                     return response
-                entry_id = next(iter(domain_data))
-                scheduler = domain_data[entry_id]["scheduler"]
-                await scheduler.async_boost(minutes)
-                response = intent_obj.create_response()
+                await data["scheduler"].async_boost(minutes)
                 response.async_set_speech(f"Heater boosted for {minutes} minutes")
                 return response
 
@@ -390,15 +442,13 @@ def _async_register_intents(hass: HomeAssistant) -> None:
             intent_type = "DudShemeshStop"
             description = "Stop the water heater"
             async def async_handle(self, intent_obj):
-                domain_data = hass.data.get(DOMAIN, {})
-                if not domain_data:
-                    response = intent_obj.create_response()
+                response = intent_obj.create_response()
+                try:
+                    data = _resolve_entry(hass)
+                except HomeAssistantError:
                     response.async_set_speech("Dud Shemesh integration not loaded.")
                     return response
-                entry_id = next(iter(domain_data))
-                scheduler = domain_data[entry_id]["scheduler"]
-                await scheduler.async_stop_heat(reason="voice")
-                response = intent_obj.create_response()
+                await data["scheduler"].async_stop_heat(reason="voice")
                 response.async_set_speech("Water heater stopped")
                 return response
 
@@ -409,19 +459,60 @@ def _async_register_intents(hass: HomeAssistant) -> None:
         LOG.debug("intents not registered: %s", e)
 
 
+def _ws_int(lo: int, hi: int):
+    return vol.All(vol.Coerce(int), vol.Range(min=lo, max=hi))
+
+
+def _ws_float(lo: float, hi: float):
+    return vol.All(vol.Coerce(float), vol.Range(min=lo, max=hi))
+
+
+# Keys any user may change from the panel/card; everything else needs admin.
+WS_PUBLIC_OPTION_KEYS = {CONF_MODE, CONF_TARGET_TEMP}
+
+WS_OPTION_SCHEMA = {
+    vol.Optional(CONF_TARGET_TEMP): _ws_int(20, 80),
+    vol.Optional(CONF_MODE): vol.In([MODE_AUTO, MODE_SCHEDULE, MODE_OFF]),
+    vol.Optional(CONF_HEATER_WATTAGE): _ws_int(100, 20000),
+    vol.Optional(CONF_LEGIONELLA_ENABLED): cv.boolean,
+    vol.Optional(CONF_LEGIONELLA_TEMP): _ws_int(55, 80),
+    vol.Optional(CONF_LEGIONELLA_DAYS): _ws_int(1, 30),
+    vol.Optional(CONF_WEATHER_ENTITY): vol.Any(None, cv.string),
+    vol.Optional(CONF_WEATHER_SKIP_STATES): vol.Any(None, cv.string),
+    vol.Optional(CONF_AUTO_COMFORT_WINDOWS): vol.Any(None, cv.string),
+    vol.Optional(CONF_AUTO_PRE_HEAT_MARGIN_MIN): _ws_int(0, 180),
+    vol.Optional(CONF_FAIL_DETECTION_ENABLED): cv.boolean,
+    vol.Optional(CONF_FAIL_DETECTION_MINUTES): _ws_int(1, 120),
+    vol.Optional(CONF_FAIL_DETECTION_RISE): _ws_float(0.1, 20),
+    vol.Optional(CONF_SOLAR_TRACK_MINUTES): _ws_int(5, 180),
+    vol.Optional(CONF_SOLAR_RISE_THRESHOLD): _ws_float(0.1, 20),
+    vol.Optional(CONF_BOOST_BUTTONS): vol.Any(None, cv.string),
+    vol.Optional(CONF_TARIFF_ILS_PER_KWH): _ws_float(0, 10),
+    vol.Optional(CONF_NOTIFY_TARGETS): vol.All(cv.ensure_list, [cv.string]),
+    vol.Optional(CONF_NOTIFY_EVENTS): vol.All(cv.ensure_list, [vol.In(NOTIFY_EVENTS)]),
+    vol.Optional(CONF_VACATION_UNTIL): _ws_int(0, 2**31 - 1),
+    vol.Optional(CONF_VACATION_HOLD_TEMP): _ws_int(5, 60),
+    vol.Optional(CONF_CALENDAR_ENTITY): vol.Any(None, cv.string),
+    vol.Optional(CONF_CALENDAR_LOOKAHEAD_MIN): _ws_int(1, 120),
+    vol.Optional(CONF_CALENDAR_KEYWORDS): vol.Any(None, cv.string),
+}
+
+
 def _async_register_ws_commands(hass: HomeAssistant) -> None:
     if hass.data.get(WS_REGISTERED_KEY):
         return
 
-    @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_state"})
+    @websocket_api.websocket_command({
+        vol.Required("type"): f"{DOMAIN}/get_state",
+        vol.Optional("entry_id"): cv.string,
+    })
     @websocket_api.async_response
     async def _ws_get_state(hass_inner, connection, msg):
-        domain_data = hass_inner.data.get(DOMAIN, {})
-        if not domain_data:
-            connection.send_error(msg["id"], "not_loaded", "integration not loaded")
+        try:
+            data = _resolve_entry(hass_inner, msg.get("entry_id"))
+        except HomeAssistantError as e:
+            connection.send_error(msg["id"], "not_loaded", str(e))
             return
-        entry_id = next(iter(domain_data))
-        data = domain_data[entry_id]
         store = data["store"]
         scheduler = data["scheduler"]
         options = data["options"]
@@ -437,6 +528,7 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
                 legionella_next = last + days * 86400
         notify_services = sorted(list((hass_inner.services.async_services().get("notify") or {}).keys()))
         connection.send_result(msg["id"], {
+            "entry_id": data["entry"].entry_id,
             "schedules": store.schedules,
             "history": store.history[:500],
             "active": scheduler.active,
@@ -453,56 +545,21 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
 
     @websocket_api.websocket_command({
         vol.Required("type"): f"{DOMAIN}/update_options",
-        vol.Optional(CONF_TARGET_TEMP): vol.Any(int, float, None),
-        vol.Optional(CONF_MODE): vol.In([MODE_AUTO, MODE_SCHEDULE, MODE_OFF]),
-        vol.Optional(CONF_HEATER_WATTAGE): vol.Any(int, float, None),
-        vol.Optional(CONF_LEGIONELLA_ENABLED): cv.boolean,
-        vol.Optional(CONF_LEGIONELLA_TEMP): vol.Any(int, float, None),
-        vol.Optional(CONF_LEGIONELLA_DAYS): vol.Any(int, None),
-        vol.Optional(CONF_WEATHER_ENTITY): vol.Any(str, None),
-        vol.Optional(CONF_WEATHER_SKIP_STATES): vol.Any(str, None),
-        vol.Optional(CONF_AUTO_COMFORT_WINDOWS): vol.Any(str, None),
-        vol.Optional(CONF_AUTO_PRE_HEAT_MARGIN_MIN): vol.Any(int, float, None),
-        vol.Optional(CONF_FAIL_DETECTION_ENABLED): cv.boolean,
-        vol.Optional(CONF_FAIL_DETECTION_MINUTES): vol.Any(int, float, None),
-        vol.Optional(CONF_FAIL_DETECTION_RISE): vol.Any(int, float, None),
-        vol.Optional(CONF_SOLAR_TRACK_MINUTES): vol.Any(int, float, None),
-        vol.Optional(CONF_SOLAR_RISE_THRESHOLD): vol.Any(int, float, None),
-        vol.Optional(CONF_BOOST_BUTTONS): vol.Any(str, None),
-        vol.Optional(CONF_TARIFF_ILS_PER_KWH): vol.Any(int, float, None),
-        vol.Optional(CONF_NOTIFY_TARGETS): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional(CONF_NOTIFY_EVENTS): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional(CONF_VACATION_UNTIL): vol.Any(int, None),
-        vol.Optional(CONF_VACATION_HOLD_TEMP): vol.Any(int, float, None),
-        vol.Optional(CONF_CALENDAR_ENTITY): vol.Any(str, None),
-        vol.Optional(CONF_CALENDAR_LOOKAHEAD_MIN): vol.Any(int, None),
-        vol.Optional(CONF_CALENDAR_KEYWORDS): vol.Any(str, None),
+        vol.Optional("entry_id"): cv.string,
+        **WS_OPTION_SCHEMA,
     })
     @websocket_api.async_response
     async def _ws_update_options(hass_inner, connection, msg):
-        domain_data = hass_inner.data.get(DOMAIN, {})
-        if not domain_data:
-            connection.send_error(msg["id"], "not_loaded", "integration not loaded")
+        try:
+            data = _resolve_entry(hass_inner, msg.get("entry_id"))
+        except HomeAssistantError as e:
+            connection.send_error(msg["id"], "not_loaded", str(e))
             return
-        entry_id = next(iter(domain_data))
-        entry = hass_inner.config_entries.async_get_entry(entry_id)
-        if not entry:
-            connection.send_error(msg["id"], "no_entry", "entry not found")
+        patch = {k.schema: msg[k.schema] for k in WS_OPTION_SCHEMA if k.schema in msg}
+        if not connection.user.is_admin and set(patch) - WS_PUBLIC_OPTION_KEYS:
+            connection.send_error(msg["id"], "unauthorized", "Only administrators can change these settings")
             return
-        new_options = dict(entry.options)
-        for key in (CONF_TARGET_TEMP, CONF_MODE, CONF_HEATER_WATTAGE,
-                    CONF_LEGIONELLA_ENABLED, CONF_LEGIONELLA_TEMP, CONF_LEGIONELLA_DAYS,
-                    CONF_WEATHER_ENTITY, CONF_WEATHER_SKIP_STATES,
-                    CONF_AUTO_COMFORT_WINDOWS, CONF_AUTO_PRE_HEAT_MARGIN_MIN,
-                    CONF_FAIL_DETECTION_ENABLED, CONF_FAIL_DETECTION_MINUTES, CONF_FAIL_DETECTION_RISE,
-                    CONF_SOLAR_TRACK_MINUTES, CONF_SOLAR_RISE_THRESHOLD,
-                    CONF_BOOST_BUTTONS, CONF_TARIFF_ILS_PER_KWH,
-                    CONF_NOTIFY_TARGETS, CONF_NOTIFY_EVENTS,
-                    CONF_VACATION_UNTIL, CONF_VACATION_HOLD_TEMP,
-                    CONF_CALENDAR_ENTITY, CONF_CALENDAR_LOOKAHEAD_MIN, CONF_CALENDAR_KEYWORDS):
-            if key in msg:
-                new_options[key] = msg[key]
-        hass_inner.config_entries.async_update_entry(entry, options=new_options)
+        new_options = _update_entry_options(hass_inner, data["entry"], patch)
         connection.send_result(msg["id"], {"options": new_options})
 
     websocket_api.async_register_command(hass, _ws_get_state)
@@ -524,14 +581,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await data["scheduler"].async_stop()
 
     if not hass.data.get(DOMAIN):
-        for svc in (
-            SERVICE_BOOST, SERVICE_CANCEL_BOOST, SERVICE_SET_MODE, SERVICE_SET_TARGET,
-            SERVICE_ADD_SCHEDULE, SERVICE_UPDATE_SCHEDULE, SERVICE_REMOVE_SCHEDULE,
-            SERVICE_LEGIONELLA_NOW, SERVICE_LIST,
-        ):
+        for svc in ALL_SERVICES:
             if hass.services.has_service(DOMAIN, svc):
                 hass.services.async_remove(DOMAIN, svc)
         if hass.data.pop(PANEL_REGISTERED_KEY, False):
             with suppress(Exception):
                 async_remove_panel(hass, PANEL_URL_PATH)
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await DudStore(hass, entry.entry_id).async_remove()

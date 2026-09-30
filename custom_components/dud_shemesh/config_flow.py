@@ -70,9 +70,14 @@ class DudOptionsFlow(config_entries.OptionsFlow):
         self._entry = entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
         opts = self._entry.options
+        if user_input is not None:
+            # Merge: keys set from the panel (notify, vacation, weather, ...) are
+            # not part of this form and must survive.
+            new_options = {**opts, **user_input}
+            if CONF_TEMP_SENSOR not in user_input:
+                new_options[CONF_TEMP_SENSOR] = ""
+            return self.async_create_entry(title="", data=new_options)
         schema = vol.Schema({
             vol.Required(
                 CONF_HEATER_ENTITY,
@@ -82,7 +87,7 @@ class DudOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_TEMP_SENSOR,
-                default=opts.get(CONF_TEMP_SENSOR, ""),
+                description={"suggested_value": opts.get(CONF_TEMP_SENSOR) or None},
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),

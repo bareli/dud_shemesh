@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.4.12";
+const PANEL_VERSION = "0.4.13";
 const STYLES = `
 :host, :root {
   --ds-bg: var(--primary-background-color, #f4f6fa);
@@ -323,6 +323,30 @@ const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_BITS = [1, 2, 4, 8, 16, 32, 64];
 
+// Minutes the element actually ran for one history row (0 for starts/skips).
+// Rows before 0.4.13 have no actual_min; fall back to the planned duration.
+function runMinutes(h) {
+  const st = String(h.status || "");
+  if (st === "started" || st.startsWith("skipped")) return 0;
+  if (typeof h.actual_min === "number") return h.actual_min;
+  return st === "completed" || st === "target_reached" ? (parseInt(h.duration_min || 0, 10) || 0) : 0;
+}
+
+function localDayStart(ts) {
+  const d = new Date(ts * 1000);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 1000;
+}
+
+function toLocalInputValue(ts) {
+  const d = new Date(ts * 1000);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function numOr(value, fallback, parse = parseFloat) {
+  const n = parse(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function maskFromDays(days) {
   let mask = 0;
   for (const d of days) {
@@ -433,7 +457,7 @@ class DudPanel extends HTMLElement {
         "state_changed"
       );
     } catch (e) {
-      console.warn("[dud_shemesh] heater state subscription failed", e);
+      // Subscription is an optimisation; the 5 s poll keeps the panel current.
     }
   }
 
@@ -451,6 +475,7 @@ class DudPanel extends HTMLElement {
       if (this._state && typeof this._state.now === "number") {
         this._serverOffset = this._state.now - Math.floor(Date.now() / 1000);
       }
+      if (this._dragging) return;
       const focused = document.activeElement;
       if (focused && focused.tagName === "INPUT" && this.contains(focused)) return;
       this._render();
@@ -483,7 +508,8 @@ class DudPanel extends HTMLElement {
     }
     const remaining = Math.max(0, this._endsInEndsAt - this._serverNow());
     this._endsInValueEl.textContent = this._formatRemaining(remaining);
-    if (remaining === 0) {
+    if (remaining === 0 && this._endsRefreshedFor !== this._endsInEndsAt) {
+      this._endsRefreshedFor = this._endsInEndsAt;
       setTimeout(() => this._refresh(), 200);
     }
   }
@@ -583,9 +609,10 @@ class DudPanel extends HTMLElement {
     const tempUnit = this._state.temperature_unit || "°C";
 
     const minTemp = 20, maxTemp = 80;
-    const clamped = cur != null ? Math.max(minTemp, Math.min(maxTemp, cur)) : minTemp;
+    const clamp = v => Math.max(minTemp, Math.min(maxTemp, v));
+    const clamped = cur != null ? clamp(cur) : minTemp;
     const pct = ((clamped - minTemp) / (maxTemp - minTemp));
-    const targetPct = ((target - minTemp) / (maxTemp - minTemp));
+    const targetPct = ((clamp(target) - minTemp) / (maxTemp - minTemp));
 
     const startAngle = -210, endAngle = 30;
     const angleSpan = endAngle - startAngle;
@@ -632,12 +659,13 @@ class DudPanel extends HTMLElement {
       const px = ((clientX - rect.left) / rect.width) * 260;
       const py = ((clientY - rect.top) / rect.height) * 260;
       const dx = px - cx, dy = py - cy;
-      const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-      let normalized = ang;
-      while (normalized < startAngle) normalized += 360;
-      while (normalized > endAngle) normalized -= 360;
-      if (normalized < startAngle) normalized = startAngle;
-      if (normalized > endAngle) normalized = endAngle;
+      let a = Math.atan2(dy, dx) * 180 / Math.PI;
+      // Map into [startAngle, startAngle + 360); anything past endAngle is the
+      // gap under the gauge, which snaps to whichever end is closer.
+      while (a < startAngle) a += 360;
+      while (a >= startAngle + 360) a -= 360;
+      let normalized = a;
+      if (a > endAngle) normalized = (a - endAngle) <= (startAngle + 360 - a) ? endAngle : startAngle;
       const newPct = (normalized - startAngle) / angleSpan;
       const newTemp = Math.round(minTemp + newPct * (maxTemp - minTemp));
       this._pendingTarget = newTemp;
@@ -650,26 +678,29 @@ class DudPanel extends HTMLElement {
         dot.setAttribute("cy", ny);
       }
     };
-    let dragging = false;
+    this._dragging = false;
+    this._pendingTarget = null;
     svg.addEventListener("pointerdown", (ev) => {
       if (ev.target.getAttribute("data-drag") !== "target") return;
-      dragging = true;
+      this._dragging = true;
       ev.target.setPointerCapture(ev.pointerId);
       ev.preventDefault();
     });
     svg.addEventListener("pointermove", (ev) => {
-      if (!dragging) return;
+      if (!this._dragging) return;
       handleDrag(ev.clientX, ev.clientY);
     });
-    svg.addEventListener("pointerup", (ev) => {
-      if (!dragging) return;
-      dragging = false;
+    const endDrag = (ev, commit) => {
+      if (!this._dragging) return;
+      this._dragging = false;
       try { ev.target.releasePointerCapture(ev.pointerId); } catch {}
-      if (this._pendingTarget && this._pendingTarget !== target) {
-        this._saveOptions({ target_temp: this._pendingTarget });
-        this._pendingTarget = null;
-      }
-    });
+      const pending = this._pendingTarget;
+      this._pendingTarget = null;
+      if (commit && pending && pending !== target) this._saveOptions({ target_temp: pending });
+      else this._render();
+    };
+    svg.addEventListener("pointerup", (ev) => endDrag(ev, true));
+    svg.addEventListener("pointercancel", (ev) => endDrag(ev, false));
     const status_label = (status.status || "waiting").toLowerCase();
     const STATUS_LABELS = { ready: "Ready", heating: "Heating", waiting: "Waiting", solar: "Solar", cold: "Cold" };
     wrap.appendChild(el("div", {
@@ -725,14 +756,13 @@ class DudPanel extends HTMLElement {
     const now = this._state.now;
     const day = 86400;
 
-    const sumMinutes = (sinceTs) => history
-      .filter(h => h.status === "completed" || h.status === "target_reached")
+    const sumMinutes = (sinceTs) => Math.round(history
       .filter(h => h.ts >= sinceTs)
-      .reduce((a, h) => a + (parseInt(h.duration_min || 0, 10)), 0);
+      .reduce((a, h) => a + runMinutes(h), 0));
 
     const min7 = sumMinutes(now - 7 * day);
     const min30 = sumMinutes(now - 30 * day);
-    const minToday = sumMinutes(now - day);
+    const minToday = sumMinutes(localDayStart(now));
 
     const kwhFromMin = m => +(m * (wattage / 1000) / 60).toFixed(2);
     const ilsFromMin = m => +(kwhFromMin(m) * tariff).toFixed(2);
@@ -747,9 +777,9 @@ class DudPanel extends HTMLElement {
     let avgRate = null;
     const rates = history
       .filter(h => h.status === "completed" || h.status === "target_reached")
-      .filter(h => typeof h.starting_temp === "number" && typeof h.ending_temp === "number" && h.duration_min > 0)
+      .filter(h => typeof h.starting_temp === "number" && typeof h.ending_temp === "number" && runMinutes(h) > 0)
       .slice(0, 20)
-      .map(h => Math.max(0, (h.ending_temp - h.starting_temp) / Math.max(1, h.duration_min)));
+      .map(h => Math.max(0, (h.ending_temp - h.starting_temp) / Math.max(1, runMinutes(h))));
     if (rates.length) {
       avgRate = +(rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(3);
     }
@@ -932,16 +962,17 @@ class DudPanel extends HTMLElement {
     card.appendChild(el("h3", {}, "Today"));
     const segs = new Array(48).fill("idle"); // 30-min slots × 24h
     const now = new Date(this._state.now * 1000);
-    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).getTime() / 1000;
+    const dayStart = localDayStart(this._state.now);
+    // Close rows carry ts = end of run; paint [start, end]. The live run is
+    // painted from status.active below.
     history.forEach(h => {
-      if (h.ts < dayStart) return;
-      const slotStart = Math.max(0, Math.floor((h.ts - dayStart) / 1800));
-      const dur = (h.duration_min || 0) / 30;
-      const slotEnd = Math.min(48, Math.ceil(slotStart + dur));
-      const tone = h.status === "completed" || h.status === "started" || h.status === "target_reached"
-        ? (h.source === "schedule" ? "scheduled" : "heating")
-        : "idle";
-      for (let i = slotStart; i < slotEnd && i < 48; i++) segs[i] = tone;
+      const mins = runMinutes(h);
+      if (mins <= 0 || h.ts < dayStart) return;
+      const start = typeof h.started_at === "number" ? h.started_at : h.ts - mins * 60;
+      const slotStart = Math.max(0, Math.floor((start - dayStart) / 1800));
+      const slotEnd = Math.min(48, Math.ceil((h.ts - dayStart) / 1800));
+      const tone = h.source === "schedule" ? "scheduled" : "heating";
+      for (let i = slotStart; i < slotEnd; i++) segs[i] = tone;
     });
     if (status.active) {
       const startSlot = Math.floor((status.active.started_at - dayStart) / 1800);
@@ -1052,31 +1083,31 @@ class DudPanel extends HTMLElement {
 
   _openSettings() {
     const opts = this._state.options || {};
-    const target = el("input", { type: "number", min: "20", max: "80", value: String(opts.target_temp || 55) });
-    const wattage = el("input", { type: "number", min: "500", max: "10000", step: "100", value: String(opts.heater_wattage_w || 2400) });
+    const target = el("input", { type: "number", min: "20", max: "80", value: String(opts.target_temp ?? 55) });
+    const wattage = el("input", { type: "number", min: "500", max: "10000", step: "100", value: String(opts.heater_wattage_w ?? 2400) });
     const tariff = el("input", { type: "number", min: "0", max: "10", step: "0.01", value: String(opts.tariff_ils_per_kwh ?? 0.62) });
     const boostBtns = el("input", { type: "text", value: String(opts.boost_buttons || "30,60,120"), placeholder: "30,60,120" });
 
     // Advanced
     const comfort = el("input", { type: "text", value: String(opts.auto_comfort_windows || ""), placeholder: "06:30-08:00,19:00-21:00" });
-    const preMargin = el("input", { type: "number", min: "0", max: "60", value: String(opts.auto_pre_heat_margin_min || 5) });
+    const preMargin = el("input", { type: "number", min: "0", max: "60", value: String(opts.auto_pre_heat_margin_min ?? 5) });
     const weatherEnt = el("input", { type: "text", value: String(opts.weather_entity || ""), placeholder: "weather.forecast_home" });
     const weatherStates = el("input", { type: "text", value: String(opts.weather_skip_states || "sunny,clear-night") });
     const failEn = el("input", { type: "checkbox" }); failEn.checked = !!opts.fail_detection_enabled;
-    const failMin = el("input", { type: "number", min: "1", max: "60", value: String(opts.fail_detection_minutes || 8) });
-    const failRise = el("input", { type: "number", min: "0.1", max: "10", step: "0.1", value: String(opts.fail_detection_rise || 1.0) });
-    const solarMin = el("input", { type: "number", min: "5", max: "180", value: String(opts.solar_track_minutes || 30) });
-    const solarThr = el("input", { type: "number", min: "0.1", max: "10", step: "0.1", value: String(opts.solar_rise_threshold || 1.0) });
+    const failMin = el("input", { type: "number", min: "1", max: "60", value: String(opts.fail_detection_minutes ?? 8) });
+    const failRise = el("input", { type: "number", min: "0.1", max: "10", step: "0.1", value: String(opts.fail_detection_rise ?? 1.0) });
+    const solarMin = el("input", { type: "number", min: "5", max: "180", value: String(opts.solar_track_minutes ?? 30) });
+    const solarThr = el("input", { type: "number", min: "0.1", max: "10", step: "0.1", value: String(opts.solar_rise_threshold ?? 1.0) });
 
     const legEnabled = el("input", { type: "checkbox" }); legEnabled.checked = !!opts.legionella_enabled;
-    const legTemp = el("input", { type: "number", min: "55", max: "80", value: String(opts.legionella_temp || 60) });
-    const legDays = el("input", { type: "number", min: "1", max: "30", value: String(opts.legionella_days || 7) });
+    const legTemp = el("input", { type: "number", min: "55", max: "80", value: String(opts.legionella_temp ?? 60) });
+    const legDays = el("input", { type: "number", min: "1", max: "30", value: String(opts.legionella_days ?? 7) });
 
     // Vacation
     let vacationUntilTs = parseInt(opts.vacation_until || 0, 10);
     const vacInput = el("input", { type: "datetime-local",
-      value: vacationUntilTs ? new Date(vacationUntilTs * 1000).toISOString().slice(0, 16) : "" });
-    const vacHold = el("input", { type: "number", min: "20", max: "50", value: String(opts.vacation_hold_temp || 30) });
+      value: vacationUntilTs ? toLocalInputValue(vacationUntilTs) : "" });
+    const vacHold = el("input", { type: "number", min: "20", max: "50", value: String(opts.vacation_hold_temp ?? 30) });
 
     // Notifications
     const availableTargets = this._state.notify_services || [];
@@ -1181,24 +1212,24 @@ class DudPanel extends HTMLElement {
 
     this._showModal("Settings", fields, async () => {
       await this._saveOptions({
-        target_temp: parseInt(target.value, 10) || 55,
-        heater_wattage_w: parseInt(wattage.value, 10) || 2400,
-        tariff_ils_per_kwh: parseFloat(tariff.value) || 0.62,
+        target_temp: numOr(target.value, 55, parseInt),
+        heater_wattage_w: numOr(wattage.value, 2400, parseInt),
+        tariff_ils_per_kwh: numOr(tariff.value, 0.62),
         boost_buttons: boostBtns.value.trim() || "30,60,120",
         auto_comfort_windows: comfort.value.trim(),
-        auto_pre_heat_margin_min: parseInt(preMargin.value, 10) || 5,
+        auto_pre_heat_margin_min: numOr(preMargin.value, 5, parseInt),
         weather_entity: weatherEnt.value.trim(),
         weather_skip_states: weatherStates.value.trim(),
         fail_detection_enabled: failEn.checked,
-        fail_detection_minutes: parseInt(failMin.value, 10) || 8,
-        fail_detection_rise: parseFloat(failRise.value) || 1.0,
-        solar_track_minutes: parseInt(solarMin.value, 10) || 30,
-        solar_rise_threshold: parseFloat(solarThr.value) || 1.0,
+        fail_detection_minutes: numOr(failMin.value, 8, parseInt),
+        fail_detection_rise: numOr(failRise.value, 1.0),
+        solar_track_minutes: numOr(solarMin.value, 30, parseInt),
+        solar_rise_threshold: numOr(solarThr.value, 1.0),
         legionella_enabled: legEnabled.checked,
-        legionella_temp: parseInt(legTemp.value, 10) || 60,
-        legionella_days: parseInt(legDays.value, 10) || 7,
+        legionella_temp: numOr(legTemp.value, 60, parseInt),
+        legionella_days: numOr(legDays.value, 7, parseInt),
         vacation_until: vacInput.value ? Math.floor(new Date(vacInput.value).getTime() / 1000) : 0,
-        vacation_hold_temp: parseInt(vacHold.value, 10) || 30,
+        vacation_hold_temp: numOr(vacHold.value, 30, parseInt),
         notify_targets: Array.from(currentTargets),
         notify_events: Array.from(currentEvents),
       });

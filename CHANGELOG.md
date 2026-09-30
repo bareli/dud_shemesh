@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.13 — bug-fix sweep (#1–#23)
+
+Safety / data
+- **#1** Heater no longer left on after an HA restart mid-run: the active run is restored once HA has started (heater entity loaded), and kept even if the heater state is still unknown so the close timer turns it off.
+- **#2 / #8** Closing a run clears state before turning the heater off. A failed turn-off is logged instead of leaving the scheduler stuck in "heating", and our own turn-off no longer triggers a second `external_stop` close (duplicate history rows, events, notifications).
+- **#3** Options flow merges into existing options instead of replacing them; panel-only settings (notify, vacation, weather, tariff, calendar, ...) survive "Configure".
+- **#4** Multi-instance: each entry has its own storage file (`dud_shemesh.data.<entry_id>`); the pre-0.4.13 shared file is migrated to the first entry. Services are registered once and accept an optional `entry_id` (default: first entry); panel/WS/intents use the first entry in config order.
+- **#5** Anti-Legionella only recorded as done when the target temperature is reached.
+
+Behaviour
+- **#6** Target-reached check and fail detection are re-armed when the entry reloads during a run (any options save).
+- **#7** Temperature samples are not collected while the element is on, so a finished electric run is no longer mistaken for solar gain.
+- **#9** Only one run can start per minute tick; the run is claimed before the relay call, so network relays can't race two starts.
+- **#10** Pending calendar-triggered starts and the fail check are cancelled on stop/reload; seen-event keys are pruned.
+- `skipped_solar` / `skipped_weather` notifications are now actually sent.
+- **#11** Vacation "active until" no longer shifts by the UTC offset on every Settings save.
+- **#12** Dragging the target past 80 °C snaps to the nearest end instead of jumping to 20 °C.
+- **#13** Today timeline paints each run from its real start to its end.
+- **#14** Reports use actual element on-time (`actual_min`, new on close records) for all stop reasons; "Today" starts at local midnight.
+
+Minor
+- **#15** Options flow temp sensor uses `suggested_value` (blank is valid).
+- **#16** Service and intent numbers are coerced (`"30"` works).
+- **#17** `update_options` WS validates ranges; non-admin users may only change mode and target.
+- **#18** Calendar description values clamped (20–80 °C, 1–720 min).
+- **#19** Gauge target marker clamped; `0` can be saved for margin/tariff.
+- **#20** Periodic refresh no longer interrupts a target drag.
+- **#21 / #22** Card error rendering uses `textContent`; `console.*` removed; card shows service errors inline.
+- **#23** Tank temperature sensor has `device_class: temperature` and `state_class: measurement`; minutes-to-target is a duration.
+- Countdown hitting 0 refreshes once instead of every second.
+- New pytest suite (`tests/`) with a regression test per issue, run in CI.
+
 ## 0.4.12 — apply panel fixes to the Lovelace card
 
 - The fixes shipped in 0.4.5–0.4.10 only touched the sidebar panel (`panel.js`); the Lovelace card (`card.js`) still polled every 5 s with no live ticker, no `state_changed` subscription, no re-attach handling, and no visibility wake-up. All of the same logic is now ported to the card: per-second `Ends in` countdown with server clock skew correction, immediate refresh on heater entity state change, restart of timers/subscriptions when the card is re-attached to the DOM, and force-refresh when the browser tab returns to foreground.
