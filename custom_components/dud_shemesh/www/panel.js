@@ -1,4 +1,4 @@
-const PANEL_VERSION = "0.5.0";
+const PANEL_VERSION = "0.6.0";
 const STYLES = `
 :host, :root {
   --ds-bg: var(--primary-background-color, #f4f6fa);

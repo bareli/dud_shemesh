@@ -53,10 +53,12 @@ Compact gauge + boost + mode for embedding on any dashboard view.
 - Companion Lovelace **`custom:dud-shemesh-card`**: gauge, −/+ target, next heat, boost / extend / stop, mode. Visual editor with tank picker (`entry_id`), `title`, `show_mode`.
 
 **Smart layer**
-- **Real Auto mode**: predictive pre-heat for configured comfort windows (`06:30-08:00,19:00-21:00`).
+- **Real Auto mode**: predictive pre-heat for configured comfort windows (`06:30-08:00,19:00-21:00`), timed with the tank's **learned heating speed** (°C/min from finished runs; physics fallback from tank volume and wattage).
+- **Time-of-use prices**: set price windows (e.g. `23:00-07:00@0.49`); auto pre-heat moves to the cheapest hours that still finish in time, and every run records its real cost.
+- **Shabbat mode**: with the Jewish Calendar integration, heats before candle lighting, optionally locks the controls and silences notifications until havdalah.
 - **Skip-if-warm**: schedule run is skipped when tank already at target.
 - **Solar gain detection**: rolling 30-min temperature delta; auto-skips electric when sun is contributing.
-- **Weather-aware skip**: optional weather entity; `sunny` → skip schedule. Never applied between sunset and sunrise (uses `sun.sun`).
+- **Weather-aware skip**: optional weather entity; `sunny` → skip schedule. With **forecast hours** set, uses the hourly forecast (condition / cloud cover) instead of the current state. Or point it at a solar production forecast sensor (Forecast.Solar, Solcast). Never applied between sunset and sunrise (uses `sun.sun`).
 - **Soil-of-water-heaters style**: anti-Legionella weekly cycle to a configurable temp.
 
 **Reliability**
@@ -67,22 +69,29 @@ Compact gauge + boost + mode for embedding on any dashboard view.
 
 **Visibility**
 - **Reports tab**: "Saved this month ₪X" from runs the sun made unnecessary, 30-day electric vs avoided kWh chart, today / 7-day / 30-day on-time, energy (kWh) and cost (₪). Heater health avg °C/min trend. Run outcomes.
-- 4 sensors: status (with `next_heat_*`, `hot_by`, `showers_available` attributes), tank temperature, minutes-to-target, and **energy (kWh, `total_increasing`) for the HA Energy dashboard**.
+- **Native entities** on one device per water heater:
+  - `water_heater` (target temperature, mode, away = vacation, on = heat now);
+  - buttons for each boost duration, stop, anti-Legionella now;
+  - `select` for mode; switches for heat now, vacation, anti-Legionella;
+  - binary sensors for heating, solar gaining, temperature sensor problem;
+  - sensors: status (with `next_heat_*`, `hot_by`, `showers_available`, `heat_rate_*` attributes), tank temperature, minutes-to-target, and **energy (kWh, `total_increasing`) for the HA Energy dashboard**.
+- Reports: 24 h / 7 day tank temperature chart from HA history with heating runs shaded.
 
 **Triggers & convenience**
 - **Vacation mode**: pick an "active until" date; schedules suspended, tank held at anti-mold temp (default 30 °C).
 - **Calendar-driven one-off heat**: events on a chosen calendar with summary containing a keyword (`dud,water,חם,מים,דוד` default) fire heat runs. Description sets minutes / target temp.
-- **Voice via Assist**: `DudShemeshBoost` and `DudShemeshStop` intents — say "boost the water heater" to your HA Assist.
-- **Notifications**: pick `notify.*` services + which events push (heat_start/end, target reached, fail, skips, anti-Legionella).
+- **Voice via Assist**: `DudShemeshBoost`, `DudShemeshStop` and `DudShemeshStatus` intents with ready-made English and Hebrew sentences (see [Voice](#voice-assist)). The `water_heater` entity also works with the built-in turn on / off intents.
+- **Notifications**: pick `notify.*` services + which events push (heat start/end, target reached, fault, skips, anti-Legionella, safety stop, sensor offline, manual turn-on, cold warning). Companion-app (`mobile_app_*`) notifications get **action buttons** (Heat now / Boost 1 h / Keep 30 min / Turn off). Texts follow the HA language (English / Hebrew).
+- **Cold warning**: 60 min before a comfort window, if the tank is cold and nothing is planned, you get "won't be hot by 07:00" with a Boost button.
 
 **Multi-instance**
-- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler and has its own storage file (`.storage/dud_shemesh.data.<entry_id>`). All services take an optional `entry_id`; without it they act on the first entry. (Panel UI shows the first entry; the Lovelace card can target any entry.)
+- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler and has its own storage file (`.storage/dud_shemesh.data.<entry_id>`). All services take an optional `entry_id`; without it they act on the first entry. The panel has a tank picker; the Lovelace card can target any entry.
 
 **i18n**
 - Full English + Hebrew UI (panel and card), **right-to-left** layout when HA language is `he`, Sunday-first week.
 
 **Platform**
-- Single-instance config flow + options flow with selectors.
+- Config flow asks for the heater, sensor, target, wattage, tank volume, price and comfort windows (validated); everything else lives in the panel Settings (tabbed). Settings are admin-only; everyday controls (mode, target, heat now, vacation) work for every user.
 - Domain-aware: `switch`, `input_boolean` for the heater relay.
 - Persistent storage via HA's `Store` helper.
 
@@ -126,6 +135,17 @@ Minimum HA version: **2024.7.0**.
 
 Every service accepts an optional `entry_id` to target a specific water heater when the integration is added more than once.
 
+## Voice (Assist)
+
+Copy the sentence file for your language into Home Assistant and restart:
+
+| Language | File | Copy to |
+| -------- | ---- | ------- |
+| English | [`docs/assist/en/dud_shemesh.yaml`](docs/assist/en/dud_shemesh.yaml) | `<config>/custom_sentences/en/dud_shemesh.yaml` |
+| Hebrew | [`docs/assist/he/dud_shemesh.yaml`](docs/assist/he/dud_shemesh.yaml) | `<config>/custom_sentences/he/dud_shemesh.yaml` |
+
+Examples: "boost the water heater for 45 minutes", "is there hot water", "stop the water heater"; "תדליק את הדוד לחצי שעה", "יש מים חמים", "תכבה את הדוד".
+
 ## Events
 
 | Event | When | Data |
@@ -138,9 +158,11 @@ Anti-Legionella is only recorded as done when the tank actually reaches the cycl
 
 ## Sensors
 
-- `sensor.dud_shemesh_status` — `ready` / `heating` / `waiting` / `solar` / `cold`. Attributes: `current_temp`, `target_temp`, `active`.
+- `sensor.dud_shemesh_status` — `ready` / `heating` / `waiting` / `solar` / `cold`. Attributes: `current_temp`, `target_temp`, `active`, `next_heat_at`, `next_heat_source`, `next_heat_label`, `hot_by`, `showers_available`, `heat_rate_c_per_min`, `heat_rate_source` (`learned` / `physics` / `fallback`).
 - `sensor.dud_shemesh_tank_temperature` — current tank temp in °C.
 - `sensor.dud_shemesh_minutes_to_target` — estimated minutes to reach target if heater were on now.
+- `sensor.dud_shemesh_energy` — lifetime element energy (kWh) for the Energy dashboard.
+- Plus the `water_heater`, `button`, `select`, `switch` and `binary_sensor` entities listed under Features.
 
 ## Roadmap
 
