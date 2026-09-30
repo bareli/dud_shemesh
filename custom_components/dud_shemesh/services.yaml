@@ -187,6 +187,15 @@ update_schedule:
       required: false
       selector:
         boolean:
+    skip_until:
+      name: Skip until (Unix timestamp)
+      description: Skip runs that would start before this time (skip once). 0 clears.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 4102444800
+          mode: box
 
 remove_schedule:
   name: Remove schedule

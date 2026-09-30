@@ -8,11 +8,12 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature, UnitOfTime
+from homeassistant.const import UnitOfEnergy, UnitOfTemperature, UnitOfTime
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_STATE_CHANGED
 
@@ -27,6 +28,7 @@ async def async_setup_entry(
         DudStatusSensor(entry.entry_id, data["scheduler"]),
         DudTempSensor(entry.entry_id, data["scheduler"]),
         DudMinutesToTargetSensor(entry.entry_id, data["scheduler"]),
+        DudEnergySensor(entry.entry_id, data["scheduler"]),
     ])
 
 
@@ -66,10 +68,16 @@ class DudStatusSensor(_BaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         s = self._scheduler.now_status()
+        nxt = s.get("next_heat") or {}
         return {
             "current_temp": s.get("current_temp"),
             "target_temp": s.get("target_temp"),
             "active": s.get("active"),
+            "next_heat_at": dt_util.utc_from_timestamp(nxt["at"]).isoformat() if nxt else None,
+            "next_heat_source": nxt.get("source"),
+            "next_heat_label": nxt.get("label"),
+            "hot_by": dt_util.utc_from_timestamp(nxt["ready_by"]).isoformat() if nxt.get("ready_by") else None,
+            "showers_available": s.get("showers_available"),
         }
 
 
@@ -105,3 +113,23 @@ class DudMinutesToTargetSensor(_BaseSensor):
     @property
     def native_value(self):
         return self._scheduler.estimate_minutes_to_target()
+
+
+class DudEnergySensor(_BaseSensor):
+    """Element energy for the HA Energy dashboard (on-time x configured wattage)."""
+
+    _attr_name = "Energy"
+    _attr_icon = "mdi:lightning-bolt"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, entry_id, scheduler):
+        super().__init__(entry_id, scheduler)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_energy"
+        self._attr_should_poll = True  # climbs while the element is on
+
+    @property
+    def native_value(self):
+        return self._scheduler.energy_total_kwh()

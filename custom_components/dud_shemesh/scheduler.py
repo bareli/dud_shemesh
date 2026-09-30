@@ -19,7 +19,15 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    COLD_WATER_TEMP,
     DAY_BITS,
+    DEFAULT_MANUAL_ON_MAX_MIN,
+    DEFAULT_MAX_RUN_MIN,
+    DEFAULT_MAX_TANK_TEMP,
+    DEFAULT_SENSOR_STALE_MIN,
+    SHOWER_LITRES,
+    SHOWER_TEMP,
+    UPCOMING_HORIZON_H,
     DEFAULT_FAIL_DETECTION_MINUTES,
     DEFAULT_FAIL_DETECTION_RISE,
     DEFAULT_LEGIONELLA_DAYS,
@@ -71,6 +79,9 @@ class DudScheduler:
         self._last_minute_fired: Optional[str] = None
         self._temp_samples: list[tuple[int, float]] = []  # rolling (ts, temp)
         self._planned_preheats: dict[str, int] = {}       # window_key -> end_at_ts
+        self._ha_started = False
+        self._stale_minutes = 0
+        self._stale_notified = False
 
     @property
     def active(self) -> Optional[dict]:
@@ -92,18 +103,50 @@ class DudScheduler:
 
     async def _on_ha_started(self, _hass) -> None:
         self._unsub_started = None
+        self._ha_started = True
         await self._restore_active_boost()
+        heater = self.options.get("heater_entity")
+        state = self.hass.states.get(heater) if heater else None
+        if not self._active and state and state.state in ON_STATES:
+            self._maybe_adopt_manual_on()
 
     @callback
     def _on_heater_state_change(self, event) -> None:
-        if not self._active:
-            return
         new_state = event.data.get("new_state")
         if not new_state:
             return
-        if new_state.state in OFF_STATES or new_state.state == "unavailable":
-            LOG.info("heater turned off externally — closing active session")
-            self.hass.async_create_task(self._async_close("external_stop"))
+        # Events can arrive after our own relay calls moved on; only react to
+        # what the heater is actually doing now.
+        current = self.hass.states.get(event.data.get("entity_id"))
+        if current is None or current.state != new_state.state:
+            return
+        if self._active:
+            if new_state.state in OFF_STATES or new_state.state == "unavailable":
+                LOG.info("heater turned off externally — closing active session")
+                self.hass.async_create_task(self._async_close("external_stop"))
+            return
+        old_state = event.data.get("old_state")
+        if new_state.state in ON_STATES and (old_state is None or old_state.state not in ON_STATES):
+            self._maybe_adopt_manual_on()
+
+    @callback
+    def _maybe_adopt_manual_on(self) -> None:
+        """Heater switched on outside any run: track it so it is never left on."""
+        max_min = int(self.options.get("manual_on_max_min", DEFAULT_MANUAL_ON_MAX_MIN) or 0)
+        if max_min <= 0 or not self._ha_started:
+            return
+        LOG.info("heater turned on manually — adopting as a %d min run", max_min)
+        self.hass.async_create_task(self.async_start_heat(
+            source="manual", duration_min=max_min,
+            target_temp=int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP),
+            note="adopted manual turn-on", heater_already_on=True,
+        ))
+
+    def _max_run_sec(self) -> int:
+        return max(1, int(self.options.get("max_run_min") or DEFAULT_MAX_RUN_MIN)) * 60
+
+    def _wattage_kw(self) -> float:
+        return float(self.options.get("heater_wattage_w") or 0) / 1000.0
 
     async def async_stop(self) -> None:
         for attr in (
@@ -174,6 +217,7 @@ class DudScheduler:
 
         # Always sample for solar tracking, regardless of mode
         self._track_temp_sample()
+        self._check_sensor_stale()
 
         mode = self.options.get("mode", MODE_SCHEDULE)
         if mode == MODE_OFF:
@@ -203,6 +247,13 @@ class DudScheduler:
             if not (int(sched.get("days_mask", 0)) & bit):
                 continue
             if sched.get("time_hhmm") != hhmm:
+                continue
+            if int(sched.get("skip_until") or 0) > int(time.time()):
+                LOG.info("skip schedule %s: skipped once by user", sched["id"])
+                self.hass.async_create_task(self.store.async_record_run(
+                    "schedule", int(sched.get("duration_min", 60)), "skipped_user",
+                    starting_temp=self._read_temp(), note=f"schedule:{sched['id']}",
+                ))
                 continue
             if self._active or started:
                 LOG.debug("skip schedule %s: heater already running", sched["id"])
@@ -306,6 +357,9 @@ class DudScheduler:
         s = self.hass.states.get(ent)
         if not s:
             return False
+        sun = self.hass.states.get("sun.sun")
+        if sun and sun.state == "below_horizon":
+            return False  # solar cannot help before sunrise / after sunset
         states = [x.strip() for x in str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES)).split(",") if x.strip()]
         return s.state in states
 
@@ -434,6 +488,7 @@ class DudScheduler:
                 LOG.warning("notify %s failed: %s", t, e)
 
     def _read_temp(self) -> Optional[float]:
+        """Tank temperature, or None when missing, non-numeric or stale."""
         sensor = self.options.get("temp_sensor")
         if not sensor:
             return None
@@ -441,9 +496,31 @@ class DudScheduler:
         if not s:
             return None
         try:
-            return float(s.state)
+            value = float(s.state)
         except (TypeError, ValueError):
             return None
+        stale_min = int(self.options.get("sensor_stale_min", DEFAULT_SENSOR_STALE_MIN) or 0)
+        if stale_min > 0:
+            seen = getattr(s, "last_reported", None) or s.last_updated
+            if (dt_util.utcnow() - seen).total_seconds() > stale_min * 60:
+                return None
+        return value
+
+    def _check_sensor_stale(self) -> None:
+        if not self.options.get("temp_sensor") or not self._ha_started:
+            return
+        if self._read_temp() is not None:
+            self._stale_minutes = 0
+            self._stale_notified = False
+            return
+        self._stale_minutes += 1
+        if self._stale_minutes >= 5 and not self._stale_notified:
+            self._stale_notified = True
+            LOG.warning("dud_shemesh: tank temperature sensor unavailable or stale; running time-only")
+            self.hass.async_create_task(self._notify(
+                "sensor_stale", "Dud Shemesh — sensor",
+                "Tank temperature sensor is unavailable or stale. Heating runs by time only until it recovers.",
+            ))
 
     async def async_start_heat(
         self,
@@ -452,6 +529,7 @@ class DudScheduler:
         target_temp: Optional[int] = None,
         note: str = "",
         schedule_id: Optional[str] = None,
+        heater_already_on: bool = False,
     ) -> None:
         heater = self.options.get("heater_entity")
         if not heater:
@@ -462,11 +540,13 @@ class DudScheduler:
 
         starting_temp = self._read_temp()
         now = int(time.time())
+        run_sec = min(max(60, int(duration_min) * 60), self._max_run_sec())
+        duration_min = run_sec // 60
         # Claim the run before the first await so concurrent starts see it.
         self._active = {
             "source": source,
             "started_at": now,
-            "ends_at": now + max(60, int(duration_min) * 60),
+            "ends_at": now + run_sec,
             "duration_min": int(duration_min),
             "target_temp": target_temp,
             "starting_temp": starting_temp,
@@ -475,7 +555,8 @@ class DudScheduler:
         }
         active = self._active
         try:
-            await self._call_heater(heater, on=True)
+            if not heater_already_on:
+                await self._call_heater(heater, on=True)
         except Exception:
             if self._active is active:
                 self._active = None
@@ -543,11 +624,20 @@ class DudScheduler:
                 self._unsub_temp_check()
                 self._unsub_temp_check = None
             return
-        target = self._active.get("target_temp")
-        if target is None:
-            return
         cur = self._read_temp()
         if cur is None:
+            return
+        max_temp = float(self.options.get("max_tank_temp") or DEFAULT_MAX_TANK_TEMP)
+        if cur >= max_temp:
+            LOG.warning("dud_shemesh: tank at %.1f°C >= safety limit %.0f°C, stopping", cur, max_temp)
+            self.hass.async_create_task(self._notify(
+                "safety_stop", "Dud Shemesh — safety",
+                f"Heater stopped: tank reached {cur:.0f}°C (limit {max_temp:.0f}°C).",
+            ))
+            self.hass.async_create_task(self._async_close("safety_overtemp"))
+            return
+        target = self._active.get("target_temp")
+        if target is None:
             return
         if cur >= target:
             self.hass.bus.async_fire(EVENT_TARGET_REACHED, {
@@ -584,6 +674,12 @@ class DudScheduler:
             ended_at = min(now, int(active.get("ends_at") or now))
             actual_min = round(max(0, ended_at - started_at) / 60, 1)
             ending_temp = self._read_temp()
+            await self.store.async_add_energy(actual_min / 60 * self._wattage_kw())
+            if active.get("source") == "manual" and status == "completed":
+                await self._notify(
+                    "safety_stop", "Dud Shemesh — safety",
+                    f"Heater was left on; turned off after {actual_min:.0f} min.",
+                )
             await self.store.async_record_run(
                 active.get("source", "manual"),
                 active.get("duration_min", 0),
@@ -625,8 +721,10 @@ class DudScheduler:
         target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
         if self._active:
             extra_sec = max(60, int(minutes) * 60)
-            self._active["ends_at"] = int(self._active.get("ends_at", time.time())) + extra_sec
-            self._active["duration_min"] = int(self._active.get("duration_min", 0)) + int(minutes)
+            started_at = int(self._active.get("started_at", time.time()))
+            cap = started_at + self._max_run_sec()
+            self._active["ends_at"] = min(cap, int(self._active.get("ends_at", time.time())) + extra_sec)
+            self._active["duration_min"] = (self._active["ends_at"] - started_at) // 60
             await self.store.async_set_active_boost(self._active)
             if self._unsub_close:
                 self._unsub_close()
@@ -733,6 +831,114 @@ class DudScheduler:
         delta = target - cur
         return int(round(delta * 6.0))  # ~6 minutes per °C
 
+    def _parse_windows(self) -> list[tuple[int, int, str]]:
+        out = []
+        for chunk in (self.options.get("auto_comfort_windows") or "").split(","):
+            chunk = chunk.strip()
+            if "-" not in chunk:
+                continue
+            start, end = chunk.split("-", 1)
+            try:
+                hh, mm = [int(x) for x in start.strip().split(":")]
+            except ValueError:
+                continue
+            if 0 <= hh < 24 and 0 <= mm < 60:
+                out.append((hh, mm, f"{start.strip()}-{end.strip()}"))
+        return out
+
+    def next_schedule_run(self, sched: dict, after: Optional[datetime] = None) -> Optional[int]:
+        """Next firing of a schedule (timestamp) within 8 days, honouring skip-once and vacation."""
+        if not sched.get("enabled"):
+            return None
+        try:
+            hh, mm = [int(x) for x in str(sched.get("time_hhmm", "")).split(":")]
+        except ValueError:
+            return None
+        after = after or dt_util.now()
+        skip_until = int(sched.get("skip_until") or 0)
+        vacation_until = self._vacation_active()
+        mask = int(sched.get("days_mask", 0))
+        for d in range(8):
+            day = after + timedelta(days=d)
+            if not mask & DAY_BITS[day.weekday()]:
+                continue
+            at = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            ts = int(at.timestamp())
+            if at <= after or ts < skip_until or ts < vacation_until:
+                continue
+            return ts
+        return None
+
+    def upcoming(self, horizon_h: int = UPCOMING_HORIZON_H) -> list[dict]:
+        """Planned heat starts in the next horizon_h hours, soonest first."""
+        mode = self.options.get("mode", MODE_SCHEDULE)
+        if mode == MODE_OFF:
+            return []
+        now = dt_util.now()
+        end_ts = int((now + timedelta(hours=horizon_h)).timestamp())
+        vacation_until = self._vacation_active()
+        out: list[dict] = []
+        for sched in self.store.schedules:
+            ts = self.next_schedule_run(sched, now)
+            if ts is None or ts > end_ts:
+                continue
+            out.append({
+                "at": ts, "source": "schedule", "schedule_id": sched["id"],
+                "label": sched.get("name") or sched.get("time_hhmm"),
+                "duration_min": int(sched.get("duration_min", 60)),
+                "target_temp": sched.get("target_temp"),
+            })
+        if mode == MODE_AUTO:
+            eta = self.estimate_minutes_to_target() or 30
+            margin = int(self.options.get("auto_pre_heat_margin_min", DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN))
+            for d in (0, 1):
+                for hh, mm, label in self._parse_windows():
+                    ready = (now + timedelta(days=d)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+                    ready_ts = int(ready.timestamp())
+                    if ready <= now or ready_ts > end_ts or ready_ts < vacation_until:
+                        continue
+                    out.append({
+                        "at": max(int(now.timestamp()), ready_ts - (eta + margin) * 60),
+                        "ready_by": ready_ts, "source": "auto", "label": label,
+                        "duration_min": eta + margin,
+                        "target_temp": int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP),
+                    })
+        if self.options.get("legionella_enabled") and not vacation_until:
+            days = int(self.options.get("legionella_days", DEFAULT_LEGIONELLA_DAYS))
+            last = self.store.last_legionella
+            nxt = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            if nxt <= now:
+                nxt += timedelta(days=1)
+            ts = int(nxt.timestamp())
+            if ts <= end_ts and (not last or ts - last >= days * 86400):
+                out.append({
+                    "at": ts, "source": "legionella", "label": "anti-Legionella",
+                    "duration_min": 120,
+                    "target_temp": int(self.options.get("legionella_temp", DEFAULT_LEGIONELLA_TEMP)),
+                })
+        out.sort(key=lambda e: e["at"])
+        return out
+
+    def showers_available(self) -> Optional[int]:
+        """Rough count of showers the tank can supply now (needs tank volume + sensor)."""
+        volume = float(self.options.get("tank_volume_l") or 0)
+        cur = self._read_temp()
+        if volume <= 0 or cur is None:
+            return None
+        if cur <= SHOWER_TEMP:
+            return 0
+        litres = volume * (cur - COLD_WATER_TEMP) / (SHOWER_TEMP - COLD_WATER_TEMP)
+        return int(litres // SHOWER_LITRES)
+
+    def energy_total_kwh(self) -> float:
+        """Lifetime element energy, including the running session so far."""
+        total = self.store.energy_kwh_total
+        if self._active:
+            now = int(time.time())
+            end = min(now, int(self._active.get("ends_at") or now))
+            total += max(0, end - int(self._active.get("started_at") or now)) / 3600 * self._wattage_kw()
+        return round(total, 3)
+
     def now_status(self) -> dict:
         cur = self._read_temp()
         target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
@@ -747,7 +953,11 @@ class DudScheduler:
         else:
             label = "waiting"
         rise = self._solar_rise_per_30min()
+        upcoming = self.upcoming()
         return {
+            "next_heat": upcoming[0] if upcoming else None,
+            "upcoming": upcoming,
+            "showers_available": self.showers_available(),
             "status": label,
             "current_temp": cur,
             "target_temp": target,

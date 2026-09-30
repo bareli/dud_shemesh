@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — hot water you can plan on
+
+Bugs
+- **#24** Weather skip no longer skips pre-sunrise heating: default skip states are now `sunny` only (old `sunny,clear-night` default is migrated) and weather skip never applies while `sun.sun` is below the horizon.
+- **#25** Hebrew: full panel and card translation, fixed RTL garbling (`hours 2+`, `C°`, `70~ min`), timeline always reads 00→24 with the "now" marker in the right place.
+
+Features
+- **#26** "Will I have hot water?": next heat line ("Hot by 06:30" / "Morning shower · tomorrow 06:15"), planned runs painted on the Today timeline, showers-available estimate from new tank volume setting. Status sensor gains `next_heat_at`, `next_heat_source`, `next_heat_label`, `hot_by`, `showers_available`.
+- **#27** Safety: manual turn-ons are adopted and turned off after `manual_on_max_min` (default 60, 0 = off); `max_run_min` hard cap (default 180) also caps boost extensions; `max_tank_temp` over-temperature cutoff (default 75 °C); stale temperature sensor detection (`sensor_stale_min`, default 120) with `safety_stop` / `sensor_stale` notifications.
+- **#29** New Energy sensor (kWh, `total_increasing`) for the HA Energy dashboard.
+- **#30** Reports: "Saved this month ₪X", 30-day electric vs avoided kWh chart, human-readable durations (**#42**).
+- **#36** Lovelace card parity: extend buttons while heating, configured boost durations, −/+ target, next heat, run source, `entry_id` config, visual editor.
+- **#38** Schedules: on/off switch, Sunday-first days (Hebrew / HA first weekday), next-run line, skip next (`update_schedule` `skip_until`).
+- **#39** Header version sits next to the title. **#40** Gauge turns orange-red while heating and the badge shows the run source. **#41** Target −/+ buttons.
+- Mode explanation under the mode switch; Settings layout fixed (checkboxes, chips) and a new Safety section.
+- Heater state events are ignored when they no longer match the heater's current state (prevents a stale ON being adopted, or a stale OFF closing a new run).
+
 ## 0.4.13 — bug-fix sweep (#1–#23)
 
 Safety / data
