@@ -21,8 +21,13 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ACTION_PREFIX,
     COLD_WARNING_LEAD_MIN,
+    CHEAP_SHIFT_MAX_H,
+    CHEAP_STEP_MIN,
     COLD_WATER_TEMP,
     DAY_BITS,
+    DEFAULT_PREFER_CHEAP,
+    DEFAULT_TARIFF_ILS_PER_KWH,
+    STANDBY_PENALTY_PER_H,
     DEFAULT_FORECAST_CLOUD_MAX,
     DEFAULT_FORECAST_HOURS,
     DEFAULT_SOLAR_FORECAST_MIN,
@@ -805,6 +810,7 @@ class DudScheduler:
             ending_temp = self._read_temp()
             await self.store.async_add_energy(actual_min / 60 * self._wattage_kw())
             await self._learn_heat_rate(active, status, actual_min, ending_temp)
+            cost = round(self.run_cost(started_at, int(started_at + actual_min * 60)), 3)
             if active.get("source") == "manual" and status == "completed":
                 await self._notify(
                     "safety_stop", self._msg("title_safety"), self._msg("left_on", minutes=f"{actual_min:.0f}"),
@@ -818,6 +824,7 @@ class DudScheduler:
                 note=active.get("note", ""),
                 started_at=started_at,
                 actual_min=actual_min,
+                cost=cost,
             )
             self.hass.bus.async_fire(EVENT_HEAT_FINISHED, {
                 "source": active.get("source"),
@@ -899,6 +906,7 @@ class DudScheduler:
         margin = int(self.options.get("auto_pre_heat_margin_min", DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN))
         eta = self.estimate_minutes_to_target() or 30
 
+        now_ts = int(local.timestamp())
         for hh, mm in windows:
             try:
                 window_start = local.replace(hour=hh, minute=mm, second=0, microsecond=0)
@@ -906,8 +914,8 @@ class DudScheduler:
                 continue
             if window_start <= local:
                 continue
-            minutes_to_window = int((window_start - local).total_seconds() // 60)
-            if minutes_to_window <= eta + margin:
+            start_ts = self.plan_preheat_start(int(window_start.timestamp()), eta + margin, now_ts)
+            if now_ts >= start_ts:
                 key = f"auto:{window_start.isoformat()}"
                 if self._planned_preheats.get(key):
                     continue
@@ -979,6 +987,74 @@ class DudScheduler:
         rate, _ = self.heat_rate()
         return max(1, int(round((target - cur) / rate)))
 
+    def _tariff_windows(self) -> list[tuple[int, int, float]]:
+        """[(start_min, end_min, price)] from "HH:MM-HH:MM@price,..."; end < start wraps midnight."""
+        out = []
+        for chunk in str(self.options.get("tariff_windows") or "").split(","):
+            if "@" not in chunk or "-" not in chunk:
+                continue
+            span, price = chunk.split("@", 1)
+            start, end = span.split("-", 1)
+            try:
+                sh, sm = [int(x) for x in start.strip().split(":")]
+                eh, em = [int(x) for x in end.strip().split(":")]
+                out.append((sh * 60 + sm, eh * 60 + em, float(price)))
+            except ValueError:
+                continue
+        return out
+
+    def _base_price(self) -> float:
+        return float(self.options.get("tariff_ils_per_kwh") or DEFAULT_TARIFF_ILS_PER_KWH)
+
+    def price_at(self, ts: int) -> float:
+        """₪/kWh at a moment, from the time-of-use windows or the base tariff."""
+        local = dt_util.as_local(dt_util.utc_from_timestamp(ts))
+        minute = local.hour * 60 + local.minute
+        for start, end, price in self._tariff_windows():
+            inside = start <= minute < end if start < end else (minute >= start or minute < end)
+            if inside:
+                return price
+        return self._base_price()
+
+    def run_cost(self, start_ts: int, end_ts: int) -> float:
+        """₪ for running the element between two timestamps (5-minute resolution)."""
+        kw = self._wattage_kw()
+        if end_ts <= start_ts or kw <= 0:
+            return 0.0
+        if not self._tariff_windows():
+            return (end_ts - start_ts) / 3600 * kw * self._base_price()
+        total = 0.0
+        t = start_ts
+        while t < end_ts:
+            step = min(300, end_ts - t)
+            total += step / 3600 * kw * self.price_at(t)
+            t += step
+        return total
+
+    def plan_preheat_start(self, ready_ts: int, duration_min: int, now_ts: Optional[int] = None) -> int:
+        """When to start a pre-heat that must be done by ready_ts.
+
+        Without time-of-use windows (or with prefer_cheap off) this is simply
+        ready - duration. Otherwise the cheapest start in the preceding hours,
+        with a small standby-loss penalty for finishing early.
+        """
+        latest = ready_ts - duration_min * 60
+        prefer = self.options.get("prefer_cheap", DEFAULT_PREFER_CHEAP)
+        if not prefer or not self._tariff_windows():
+            return latest
+        now_ts = int(time.time()) if now_ts is None else now_ts
+        earliest = max(now_ts, ready_ts - CHEAP_SHIFT_MAX_H * 3600)
+        best, best_cost = latest, None
+        start = latest
+        while start >= earliest:
+            end = start + duration_min * 60
+            cost = self.run_cost(start, end)
+            cost *= 1 + STANDBY_PENALTY_PER_H * (ready_ts - end) / 3600
+            if best_cost is None or cost < best_cost - 1e-9:
+                best, best_cost = start, cost
+            start -= CHEAP_STEP_MIN * 60
+        return best
+
     def _parse_windows(self) -> list[tuple[int, int, str]]:
         out = []
         for chunk in (self.options.get("auto_comfort_windows") or "").split(","):
@@ -1046,7 +1122,7 @@ class DudScheduler:
                     if ready <= now or ready_ts > end_ts or ready_ts < vacation_until:
                         continue
                     out.append({
-                        "at": max(int(now.timestamp()), ready_ts - (eta + margin) * 60),
+                        "at": max(int(now.timestamp()), self.plan_preheat_start(ready_ts, eta + margin, int(now.timestamp()))),
                         "ready_by": ready_ts, "source": "auto", "label": label,
                         "duration_min": eta + margin,
                         "target_temp": int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP),

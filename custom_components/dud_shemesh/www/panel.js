@@ -514,6 +514,20 @@ function toLocalInputValue(ts) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
+// ₪/kWh at a timestamp from "HH:MM-HH:MM@price,..." windows, else the base tariff.
+function makePriceAt(windowsRaw, base) {
+  const wins = String(windowsRaw || "").split(",").map(chunk => {
+    const m = chunk.trim().match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})@([\d.]+)$/);
+    return m ? { s: +m[1] * 60 + +m[2], e: +m[3] * 60 + +m[4], p: parseFloat(m[5]) } : null;
+  }).filter(Boolean);
+  return ts => {
+    const d = new Date(ts * 1000);
+    const min = d.getHours() * 60 + d.getMinutes();
+    const w = wins.find(x => (x.s < x.e ? min >= x.s && min < x.e : min >= x.s || min < x.e));
+    return w ? w.p : base;
+  };
+}
+
 function numOr(value, fallback, parse = parseFloat) {
   const n = parse(value);
   return Number.isFinite(n) ? n : fallback;
@@ -1037,7 +1051,11 @@ class DudPanel extends HTMLElement {
     const now = this._state.now;
     const day = 86400;
     const kwhFromMin = m => +(m * (wattage / 1000) / 60).toFixed(2);
-    const ils = kwh => `₪${(kwh * tariff).toFixed(2)}`;
+    const priceAt = makePriceAt(opts.tariff_windows, tariff);
+    const money = v => `₪${v.toFixed(2)}`;
+    // Rows since 0.6 carry their real (time-of-use) cost.
+    const costOf = h => (typeof h.cost === "number" ? h.cost : kwhFromMin(runMinutes(h)) * tariff);
+    const avoidedCost = h => kwhFromMin(parseInt(h.duration_min || 0, 10) || 0) * priceAt(h.ts);
 
     const sumMinutes = (sinceTs) => Math.round(history
       .filter(h => h.ts >= sinceTs)
@@ -1049,17 +1067,19 @@ class DudPanel extends HTMLElement {
     const d = new Date(now * 1000);
     const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime() / 1000;
     const savedMonthKwh = kwhFromMin(avoidedMinutes(monthStart));
-    const savedAllKwh = kwhFromMin(avoidedMinutes(0));
+    const skipRows = since => history.filter(h => h.ts >= since && SKIP_STATUSES.has(h.status));
+    const savedMonthIls = skipRows(monthStart).reduce((a, h) => a + avoidedCost(h), 0);
+    const savedAllIls = skipRows(0).reduce((a, h) => a + avoidedCost(h), 0);
     const skippedMonth = history.filter(h => h.ts >= monthStart && SKIP_STATUSES.has(h.status)).length;
 
     const root = el("div");
     root.appendChild(el("div", { class: "card savings" }, [
       el("div", { class: "section-title", style: "margin-top:0;" }, "☀️ " + this._t("saved_month")),
-      el("div", { class: "big" }, ils(savedMonthKwh)),
+      el("div", { class: "big" }, money(savedMonthIls)),
       el("div", { class: "sub" }, this._t("saved_sub", savedMonthKwh)),
       el("div", { class: "row2" }, [
         el("span", {}, this._t("skipped_runs", skippedMonth)),
-        el("span", {}, this._t("saved_total", ils(savedAllKwh))),
+        el("span", {}, this._t("saved_total", money(savedAllIls))),
       ]),
     ]));
 
@@ -1093,18 +1113,19 @@ class DudPanel extends HTMLElement {
       ]),
     ]));
 
+    const sumCost = (sinceTs) => history.filter(h => h.ts >= sinceTs).reduce((a, h) => a + costOf(h), 0);
     const minToday = sumMinutes(today);
     const min7 = sumMinutes(now - 7 * day);
     const min30 = sumMinutes(now - 30 * day);
-    const tiles = (mins) => el("div", { class: "report-grid" }, [
+    const tiles = (mins, cost) => el("div", { class: "report-grid" }, [
       el("div", { class: "report-tile" }, [el("div", { class: "v" }, this._fmtDur(mins)), el("div", { class: "l" }, this._t("on_time"))]),
       el("div", { class: "report-tile" }, [el("div", { class: "v", dir: "ltr" }, `${kwhFromMin(mins)} kWh`), el("div", { class: "l" }, this._t("energy"))]),
-      el("div", { class: "report-tile" }, [el("div", { class: "v" }, ils(kwhFromMin(mins))), el("div", { class: "l" }, this._t("cost"))]),
+      el("div", { class: "report-tile" }, [el("div", { class: "v" }, money(cost)), el("div", { class: "l" }, this._t("cost"))]),
     ]);
     root.appendChild(el("div", { class: "card" }, [
-      el("div", { class: "section-title", style: "margin-top:0;" }, this._t("today")), tiles(minToday),
-      el("div", { class: "section-title" }, this._t("last7")), tiles(min7),
-      el("div", { class: "section-title" }, this._t("last30")), tiles(min30),
+      el("div", { class: "section-title", style: "margin-top:0;" }, this._t("today")), tiles(minToday, sumCost(today)),
+      el("div", { class: "section-title" }, this._t("last7")), tiles(min7, sumCost(now - 7 * day)),
+      el("div", { class: "section-title" }, this._t("last30")), tiles(min30, sumCost(now - 30 * day)),
       el("p", { class: "tariff-link" }, this._t("tariff_note", wattage, tariff)),
     ]));
 

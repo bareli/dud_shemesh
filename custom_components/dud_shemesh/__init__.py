@@ -28,6 +28,9 @@ from .const import (
     CONF_CALENDAR_LOOKAHEAD_MIN,
     CONF_FAIL_DETECTION_ENABLED,
     CONF_FORECAST_CLOUD_MAX,
+    CONF_PREFER_CHEAP,
+    CONF_TARIFF_WINDOWS,
+    DEFAULT_PREFER_CHEAP,
     CONF_FORECAST_HOURS,
     CONF_SOLAR_FORECAST_ENTITY,
     CONF_SOLAR_FORECAST_MIN,
@@ -264,6 +267,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "forecast_cloud_max": entry.options.get(CONF_FORECAST_CLOUD_MAX, DEFAULT_FORECAST_CLOUD_MAX),
         "solar_forecast_entity": entry.options.get(CONF_SOLAR_FORECAST_ENTITY, ""),
         "solar_forecast_min": entry.options.get(CONF_SOLAR_FORECAST_MIN, DEFAULT_SOLAR_FORECAST_MIN),
+        "tariff_windows": entry.options.get(CONF_TARIFF_WINDOWS, ""),
+        "prefer_cheap": entry.options.get(CONF_PREFER_CHEAP, DEFAULT_PREFER_CHEAP),
     }
 
     scheduler = DudScheduler(hass, store, options, entry.entry_id)
@@ -569,6 +574,8 @@ WS_OPTION_SCHEMA = {
     vol.Optional(CONF_FORECAST_CLOUD_MAX): _ws_int(0, 100),
     vol.Optional(CONF_SOLAR_FORECAST_ENTITY): vol.Any(None, cv.string),
     vol.Optional(CONF_SOLAR_FORECAST_MIN): _ws_float(0, 1000),
+    vol.Optional(CONF_TARIFF_WINDOWS): vol.Any(None, cv.string),
+    vol.Optional(CONF_PREFER_CHEAP): cv.boolean,
 }
 
 

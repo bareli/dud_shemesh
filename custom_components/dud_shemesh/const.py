@@ -104,6 +104,14 @@ DEFAULT_SOLAR_FORECAST_MIN = 1.0
 FORECAST_SUNNY_FRACTION = 0.6
 FORECAST_REFRESH_MIN = 30
 
+# Time-of-use tariffs (v0.6)
+CONF_TARIFF_WINDOWS = "tariff_windows"     # "23:00-07:00@0.49,..." (₪/kWh)
+CONF_PREFER_CHEAP = "prefer_cheap"
+DEFAULT_PREFER_CHEAP = True
+CHEAP_SHIFT_MAX_H = 8                      # how far ahead auto pre-heat may move
+CHEAP_STEP_MIN = 15
+STANDBY_PENALTY_PER_H = 0.01               # fraction of run cost per hour waiting
+
 # Actionable notifications (mobile_app): "DUDSHEMESH:<cmd>:<arg>:<entry_id>"
 ACTION_PREFIX = "DUDSHEMESH"
 COLD_WARNING_LEAD_MIN = 60

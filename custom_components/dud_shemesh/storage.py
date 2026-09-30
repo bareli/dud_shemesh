@@ -163,6 +163,7 @@ class DudStore:
         note: str = "",
         started_at: Optional[int] = None,
         actual_min: Optional[float] = None,
+        cost: Optional[float] = None,
     ) -> None:
         entry = {
             "ts": int(time.time()),
@@ -177,6 +178,8 @@ class DudStore:
             entry["started_at"] = int(started_at)
         if actual_min is not None:
             entry["actual_min"] = actual_min
+        if cost is not None:
+            entry["cost"] = cost
         self._data["history"].insert(0, entry)
         if len(self._data["history"]) > MAX_HISTORY:
             self._data["history"] = self._data["history"][:MAX_HISTORY]

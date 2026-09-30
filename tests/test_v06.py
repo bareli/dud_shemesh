@@ -246,3 +246,36 @@ async def test_forecast_and_solar_entity_skip(hass):
     assert sch._weather_says_sunny() is True
     hass.states.async_set("sun.sun", "below_horizon")
     assert sch._weather_says_sunny() is False
+
+
+# 34
+async def test_time_of_use_price_cost_and_cheapest_start(hass, freezer):
+    from homeassistant.util import dt as dt_util
+    await setup_heater(hass)
+    data = await setup_entry(hass, make_entry(
+        hass, heater_wattage_w=3000, tariff_ils_per_kwh=0.62, tariff_windows="23:00-07:00@0.40",
+    ))
+    sch = data["scheduler"]
+    evening = dt_util.now().replace(hour=20, minute=0, second=0, microsecond=0)
+    freezer.move_to(evening)
+    day2 = evening + timedelta(days=1)
+    ts = lambda h, m=0: int(day2.replace(hour=h, minute=m).timestamp())  # noqa: E731
+
+    assert sch.price_at(ts(2)) == 0.40 and sch.price_at(ts(12)) == 0.62
+    assert abs(sch.run_cost(ts(6, 30), ts(7, 30)) - (0.5 * 3 * 0.40 + 0.5 * 3 * 0.62)) < 1e-6
+
+    # ready 06:30: latest start 05:30 is already cheap -> keep it
+    assert sch.plan_preheat_start(ts(6, 30), 60) == ts(5, 30)
+    # ready 08:00: finish in the cheap window instead (06:00-07:00)
+    assert sch.plan_preheat_start(ts(8), 60) == ts(6)
+    sch.options["prefer_cheap"] = False
+    assert sch.plan_preheat_start(ts(8), 60) == ts(7)
+
+
+async def test_close_record_has_cost(hass, freezer):
+    await setup_heater(hass)
+    data = await setup_entry(hass, make_entry(hass, heater_wattage_w=2000, tariff_ils_per_kwh=0.5))
+    await data["scheduler"].async_boost(60)
+    freezer.tick(timedelta(minutes=30))
+    await data["scheduler"].async_stop_heat()
+    assert abs(data["store"].history[0]["cost"] - 0.5) < 0.01
