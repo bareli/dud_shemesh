@@ -397,7 +397,7 @@ const I18N = {
     tariff_note: (w, t) => `Wattage ${w} W × on-time × ₪${t}/kWh. Adjust in Settings.`,
     heater_health: "Heater health", avg_rate: "Avg heat rate (last 20)", cycles: "Cycles measured",
     descale_hint: "If this number drops over weeks, the element may be scaling. Schedule a descale.",
-    temp_chart: "Tank temperature (recent samples)", outcomes: "Run outcomes (history)",
+    temp_chart: "Tank temperature", range_24h: "24 h", range_7d: "7 days", lg_tank: "Tank", no_chart_data: "No temperature history yet.", outcomes: "Run outcomes (history)",
     oc_skipped_warm: "Already warm", oc_skipped_solar: "Solar gaining", oc_skipped_weather: "Sunny",
     oc_skipped_user: "Skipped by you", oc_completed: "Completed", oc_target_reached: "Target reached",
     oc_cancelled: "Cancelled", oc_safety: "Safety stops",
@@ -473,7 +473,7 @@ const I18N = {
     tariff_note: (w, t) => `הספק ${w} וואט × זמן פעולה × ₪${t} לקוט״ש. ניתן לשנות בהגדרות.`,
     heater_health: "מצב גוף החימום", avg_rate: "קצב חימום ממוצע, 20 אחרונים", cycles: "מחזורים שנמדדו",
     descale_hint: "אם המספר יורד לאורך שבועות, ייתכן שיש אבנית על הגוף. כדאי לתאם ניקוי.",
-    temp_chart: "טמפרטורת המיכל (דגימות אחרונות)", outcomes: "תוצאות הפעלות (היסטוריה)",
+    temp_chart: "טמפרטורת המיכל", range_24h: "24 ש׳", range_7d: "7 ימים", lg_tank: "מיכל", no_chart_data: "אין עדיין היסטוריית טמפרטורה.", outcomes: "תוצאות הפעלות (היסטוריה)",
     oc_skipped_warm: "כבר חם", oc_skipped_solar: "חימום סולארי", oc_skipped_weather: "שמשי",
     oc_skipped_user: "דולג על ידך", oc_completed: "הושלם", oc_target_reached: "הגיע ליעד",
     oc_cancelled: "בוטל", oc_safety: "עצירות בטיחות",
@@ -1188,25 +1188,7 @@ class DudPanel extends HTMLElement {
       ]));
     }
 
-    const samples = (this._state.temp_samples || []).slice(-200);
-    if (samples.length >= 2) {
-      const w = 600, h = 140, p = 24;
-      const xs = samples.map(s => s[0]);
-      const ys = samples.map(s => s[1]);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minY = Math.min(...ys) - 1, maxY = Math.max(...ys) + 1;
-      const sx = t => p + ((t - minX) / Math.max(1, maxX - minX)) * (w - p * 2);
-      const sy = v => h - p - ((v - minY) / Math.max(0.1, maxY - minY)) * (h - p * 2);
-      const dPath = samples.map(([t, v], i) => `${i ? "L" : "M"} ${sx(t).toFixed(1)} ${sy(v).toFixed(1)}`).join(" ");
-      root.appendChild(el("div", { class: "card" }, [
-        el("div", { class: "section-title", style: "margin-top:0;" }, this._t("temp_chart")),
-        svgEl("svg", { viewBox: `0 0 ${w} ${h}`, style: "width:100%;height:140px;direction:ltr;" }, [
-          svgEl("path", { d: dPath, fill: "none", stroke: "var(--ds-primary)", "stroke-width": "2", "stroke-linejoin": "round" }),
-          svgEl("text", { x: p, y: 14, "font-size": "11", fill: "var(--ds-muted)" },
-            document.createTextNode(`${minY.toFixed(0)}–${maxY.toFixed(0)}°C`)),
-        ]),
-      ]));
-    }
+    root.appendChild(this._renderTempChart(history));
 
     const counts = {};
     history.forEach(hh => { counts[hh.status] = (counts[hh.status] || 0) + 1; });
@@ -1222,6 +1204,90 @@ class DudPanel extends HTMLElement {
     grid.appendChild(el("div", { class: "report-tile" }, [el("div", { class: "v" }, String(safety)), el("div", { class: "l" }, this._t("oc_safety"))]));
     root.appendChild(el("div", { class: "card" }, [el("div", { class: "section-title", style: "margin-top:0;" }, this._t("outcomes")), grid]));
     return root;
+  }
+
+  async _loadTempHistory(entityId, hours) {
+    const key = `${entityId}|${hours}`;
+    const cached = this._historyCache && this._historyCache[key];
+    if (cached && Date.now() - cached.at < 60000) return cached.points;
+    const start = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+    const res = await this._hass.callWS({
+      type: "history/history_during_period", start_time: start, entity_ids: [entityId],
+      minimal_response: true, no_attributes: true, significant_changes_only: false,
+    });
+    const points = ((res && res[entityId]) || [])
+      .map(r => [Math.floor(r.lu || r.lc || 0), parseFloat(r.s)])
+      .filter(([ts, v]) => ts > 0 && Number.isFinite(v));
+    this._historyCache = Object.assign(this._historyCache || {}, { [key]: { at: Date.now(), points } });
+    return points;
+  }
+
+  _renderTempChart(history) {
+    const hours = this._chartHours || 24;
+    const card = el("div", { class: "card" });
+    const pick = el("div", { class: "chips", style: "margin-inline-start:auto;" }, [24, 168].map(h =>
+      el("button", { type: "button", class: "btn small" + (h === hours ? " primary" : ""),
+        onClick: () => { this._chartHours = h; this._render(); } }, h === 24 ? this._t("range_24h") : this._t("range_7d"))));
+    card.appendChild(el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:8px;" },
+      [el("div", { class: "section-title", style: "margin:0;" }, this._t("temp_chart")), pick]));
+    const holder = el("div", { class: "empty" }, "…");
+    card.appendChild(holder);
+
+    const draw = (points, fromRecorder) => {
+      holder.replaceWith(this._tempChartSvg(points, history, hours, fromRecorder));
+    };
+    const sensor = (this._state.options || {}).temp_sensor;
+    const fallback = () => draw((this._state.temp_samples || []).map(([ts, v]) => [ts, v]), false);
+    if (!sensor) { fallback(); return card; }
+    this._loadTempHistory(sensor, hours)
+      .then(points => (points.length >= 2 ? draw(points, true) : fallback()))
+      .catch(fallback);
+    return card;
+  }
+
+  _tempChartSvg(points, history, hours, fromRecorder) {
+    if (points.length < 2) return el("div", { class: "empty" }, this._t("no_chart_data"));
+    const w = 600, h = 160, p = 26;
+    const now = this._serverNow();
+    const minX = fromRecorder ? now - hours * 3600 : points[0][0];
+    const maxX = now;
+    // Keep the path light: at most ~400 points.
+    const stride = Math.max(1, Math.ceil(points.length / 400));
+    const pts = points.filter((_, i) => i % stride === 0 || i === points.length - 1);
+    const ys = pts.map(q => q[1]);
+    const minY = Math.floor(Math.min(...ys) - 1), maxY = Math.ceil(Math.max(...ys) + 1);
+    const sx = t => p + ((Math.max(minX, t) - minX) / Math.max(1, maxX - minX)) * (w - p * 2);
+    const sy = v => h - p - ((v - minY) / Math.max(0.1, maxY - minY)) * (h - p * 2);
+    const kids = [];
+    // Heating runs behind the line.
+    const runs = history.filter(r => runMinutes(r) > 0).map(r => [typeof r.started_at === "number" ? r.started_at : r.ts - runMinutes(r) * 60, r.ts]);
+    const active = (this._state.status || {}).active;
+    if (active) runs.push([active.started_at, now]);
+    runs.filter(([a, b]) => b > minX).forEach(([a, b]) => kids.push(svgEl("rect", {
+      x: sx(a), y: p, width: Math.max(1, sx(b) - sx(a)), height: h - p * 2, fill: "rgba(255,152,0,0.18)",
+    })));
+    let d = `M ${sx(pts[0][0]).toFixed(1)} ${sy(pts[0][1]).toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      // Recorder states are steps: hold the previous value until the next change.
+      d += ` L ${sx(pts[i][0]).toFixed(1)} ${sy(pts[i - 1][1]).toFixed(1)} L ${sx(pts[i][0]).toFixed(1)} ${sy(pts[i][1]).toFixed(1)}`;
+    }
+    d += ` L ${sx(now).toFixed(1)} ${sy(pts[pts.length - 1][1]).toFixed(1)}`;
+    kids.push(svgEl("path", { d, fill: "none", stroke: "var(--ds-primary)", "stroke-width": "2", "stroke-linejoin": "round" }));
+    kids.push(svgEl("text", { x: p, y: 14, "font-size": "11", fill: "var(--ds-muted)" }, document.createTextNode(`${minY}–${maxY}°C`)));
+    const ticks = hours <= 24 ? 4 : 7;
+    for (let i = 0; i <= ticks; i++) {
+      const t = minX + ((maxX - minX) * i) / ticks;
+      const label = new Date(t * 1000)[hours <= 24 ? "toLocaleTimeString" : "toLocaleDateString"](this._locale(),
+        hours <= 24 ? { hour: "2-digit", minute: "2-digit", hour12: false } : { weekday: "short" });
+      kids.push(svgEl("text", { x: sx(t), y: h - 6, "font-size": "10", fill: "var(--ds-muted)", "text-anchor": "middle" }, document.createTextNode(label)));
+    }
+    return el("div", {}, [
+      svgEl("svg", { viewBox: `0 0 ${w} ${h}`, style: "width:100%;height:auto;direction:ltr;" }, kids),
+      el("div", { class: "legend" }, [
+        el("span", {}, [el("i", { style: "background:var(--ds-primary)" }), this._t("lg_tank")]),
+        el("span", {}, [el("i", { style: "background:rgba(255,152,0,0.35)" }), this._t("lg_heated")]),
+      ]),
+    ]);
   }
 
   _boostLabel(mins) {
