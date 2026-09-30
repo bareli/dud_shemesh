@@ -29,6 +29,10 @@ from .const import (
     CONF_FAIL_DETECTION_ENABLED,
     CONF_FORECAST_CLOUD_MAX,
     CONF_PREFER_CHEAP,
+    CONF_SHABBAT_ENABLED,
+    CONF_SHABBAT_LOCK,
+    CONF_SHABBAT_QUIET,
+    CONF_SHABBAT_TARGET,
     CONF_TARIFF_WINDOWS,
     DEFAULT_PREFER_CHEAP,
     CONF_FORECAST_HOURS,
@@ -269,6 +273,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "solar_forecast_min": entry.options.get(CONF_SOLAR_FORECAST_MIN, DEFAULT_SOLAR_FORECAST_MIN),
         "tariff_windows": entry.options.get(CONF_TARIFF_WINDOWS, ""),
         "prefer_cheap": entry.options.get(CONF_PREFER_CHEAP, DEFAULT_PREFER_CHEAP),
+        "shabbat_enabled": entry.options.get(CONF_SHABBAT_ENABLED, False),
+        "shabbat_target": entry.options.get(CONF_SHABBAT_TARGET, 0),
+        "shabbat_lock": entry.options.get(CONF_SHABBAT_LOCK, True),
+        "shabbat_quiet": entry.options.get(CONF_SHABBAT_QUIET, True),
     }
 
     scheduler = DudScheduler(hass, store, options, entry.entry_id)
@@ -576,6 +584,10 @@ WS_OPTION_SCHEMA = {
     vol.Optional(CONF_SOLAR_FORECAST_MIN): _ws_float(0, 1000),
     vol.Optional(CONF_TARIFF_WINDOWS): vol.Any(None, cv.string),
     vol.Optional(CONF_PREFER_CHEAP): cv.boolean,
+    vol.Optional(CONF_SHABBAT_ENABLED): cv.boolean,
+    vol.Optional(CONF_SHABBAT_TARGET): vol.Any(0, _ws_int(20, 80)),
+    vol.Optional(CONF_SHABBAT_LOCK): cv.boolean,
+    vol.Optional(CONF_SHABBAT_QUIET): cv.boolean,
 }
 
 

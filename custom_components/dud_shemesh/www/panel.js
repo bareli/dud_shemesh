@@ -327,6 +327,9 @@ const STYLES = `
   50% { opacity: 0.6; }
   100% { opacity: 1; }
 }
+.locked .boost-row, .locked .mode-toggle, .locked .target-row, .locked .schedule-card button,
+.locked .schedule-card .switch, .locked circle[data-drag] { pointer-events: none; opacity: .45; }
+.shabbat-banner { background: rgba(156,39,176,0.08); border-color: rgba(156,39,176,0.3); }
 button:focus-visible, .nav-tab:focus-visible, .mode-pill:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
 `;
 
@@ -358,7 +361,7 @@ const I18N = {
     mode_hint_off: "No automatic heating. Boost buttons still work.",
     st_ready: "Ready", st_heating: "Heating", st_waiting: "Waiting", st_solar: "Solar", st_cold: "Cold",
     src_schedule: "Schedule", src_boost: "Boost", src_manual: "Turned on manually", src_auto: "Pre-heat",
-    src_legionella: "Anti-Legionella", src_calendar: "Calendar", src_vacation_hold: "Vacation hold",
+    src_legionella: "Anti-Legionella", src_calendar: "Calendar", src_vacation_hold: "Vacation hold", src_shabbat: "Shabbat",
     ends_in: "Ends in", to_target: "To target", about_min: (n) => `~${n} min`, status_label: "Status",
     showers: "Showers", showers_val: (n) => `~${n}`,
     boost_min: (n) => `${n} min`, boost_hour: "1 hour", boost_hours: (n) => `${n} hours`,
@@ -369,6 +372,7 @@ const I18N = {
     today_word: "Today", tomorrow_word: "Tomorrow",
     legionella_in: (d) => `🦠 ${d}d to anti-Legionella`, legionella_due: "🦠 Anti-Legionella due",
     vacation_active: (d, t) => `🏖 Vacation — ${d}d left, holding ${t}°C`, vacation_end: "End",
+    shabbat_locked: (t) => `🕯 Shabbat mode — controls locked until ${t}`, shabbat_next: (t) => `🕯 Hot for Shabbat by ${t}`,
     today: "Today", lg_heated: "Heated", lg_scheduled: "Schedule", lg_planned: "Planned",
     schedules: "Schedules", add: "+ Add", no_schedules: "No schedules yet. Tap + Add to create one.",
     edit_btn: "Edit", delete_confirm: "Delete this schedule?", skip_once: "Skip next", undo_skip: "Undo skip",
@@ -423,7 +427,7 @@ const I18N = {
     mode_hint_off: "ללא חימום אוטומטי. כפתורי ההפעלה המהירה עדיין עובדים.",
     st_ready: "מוכן", st_heating: "מחמם", st_waiting: "ממתין", st_solar: "סולארי", st_cold: "קר",
     src_schedule: "לוח זמנים", src_boost: "הפעלה מהירה", src_manual: "הודלק ידנית", src_auto: "חימום מקדים",
-    src_legionella: "חיטוי ליגיונלה", src_calendar: "יומן", src_vacation_hold: "שמירה בחופשה",
+    src_legionella: "חיטוי ליגיונלה", src_calendar: "יומן", src_vacation_hold: "שמירה בחופשה", src_shabbat: "שבת",
     ends_in: "מסתיים בעוד", to_target: "עד היעד", about_min: (n) => `כ-${n} דק׳`, status_label: "מצב",
     showers: "מקלחות", showers_val: (n) => `כ-${n}`,
     boost_min: (n) => `${n} דק׳`, boost_hour: "שעה", boost_hours: (n) => (n === 2 ? "שעתיים" : `${n} שעות`),
@@ -434,6 +438,7 @@ const I18N = {
     today_word: "היום", tomorrow_word: "מחר",
     legionella_in: (d) => `🦠 עוד ${d} ימים לחיטוי ליגיונלה`, legionella_due: "🦠 נדרש חיטוי ליגיונלה",
     vacation_active: (d, t) => `🏖 חופשה — עוד ${d} ימים, שמירה על ${t}°C`, vacation_end: "סיום",
+    shabbat_locked: (t) => `🕯 מצב שבת — הבקרה נעולה עד ${t}`, shabbat_next: (t) => `🕯 חם לשבת עד ${t}`,
     today: "היום", lg_heated: "חומם", lg_scheduled: "לוח זמנים", lg_planned: "מתוכנן",
     schedules: "לוחות זמנים", add: "+ הוספה", no_schedules: "אין עדיין לוחות זמנים. לחצו + הוספה.",
     edit_btn: "עריכה", delete_confirm: "למחוק את לוח הזמנים?", skip_once: "דלג על הבא", undo_skip: "בטל דילוג",
@@ -835,6 +840,14 @@ class DudPanel extends HTMLElement {
             onClick: () => this._saveOptions({ vacation_until: 0 }),
           }, this._t("vacation_end")),
         ]),
+      ]));
+    }
+
+    const shabbat = status.shabbat;
+    this._app.classList.toggle("locked", !!(shabbat && shabbat.locked));
+    if (shabbat && shabbat.locked) {
+      this._app.appendChild(el("div", { class: "card shabbat-banner" }, [
+        el("strong", {}, this._t("shabbat_locked", shabbat.havdalah ? this._fmtWhen(shabbat.havdalah) : "—")),
       ]));
     }
 

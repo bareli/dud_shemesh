@@ -112,6 +112,16 @@ CHEAP_SHIFT_MAX_H = 8                      # how far ahead auto pre-heat may mov
 CHEAP_STEP_MIN = 15
 STANDBY_PENALTY_PER_H = 0.01               # fraction of run cost per hour waiting
 
+# Shabbat mode (v0.6), driven by the jewish_calendar integration
+CONF_SHABBAT_ENABLED = "shabbat_enabled"
+CONF_SHABBAT_TARGET = "shabbat_target"   # 0 = use the normal target
+CONF_SHABBAT_LOCK = "shabbat_lock"
+CONF_SHABBAT_QUIET = "shabbat_quiet"
+JC_CANDLE_KEY = "upcoming_candle_lighting"
+JC_HAVDALAH_KEY = "upcoming_havdalah"
+JC_ISSUR_KEY = "issur_melacha_in_effect"
+SHABBAT_LOOKAHEAD_H = 24
+
 # Actionable notifications (mobile_app): "DUDSHEMESH:<cmd>:<arg>:<entry_id>"
 ACTION_PREFIX = "DUDSHEMESH"
 COLD_WARNING_LEAD_MIN = 60

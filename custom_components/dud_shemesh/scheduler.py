@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_call_later,
@@ -25,6 +26,10 @@ from .const import (
     CHEAP_STEP_MIN,
     COLD_WATER_TEMP,
     DAY_BITS,
+    JC_CANDLE_KEY,
+    JC_HAVDALAH_KEY,
+    JC_ISSUR_KEY,
+    SHABBAT_LOOKAHEAD_H,
     DEFAULT_PREFER_CHEAP,
     DEFAULT_TARIFF_ILS_PER_KWH,
     STANDBY_PENALTY_PER_H,
@@ -88,6 +93,8 @@ class DudScheduler:
         self.entry_id = entry_id
         self._cold_warned: dict[str, int] = {}             # window key -> ready ts
         self._forecast: Optional[list[dict]] = None         # hourly weather forecast cache
+        self._shabbat_done: set[int] = set()                # candle-lighting ts already pre-heated
+        self._jc_cache: dict[tuple[str, str], tuple[Optional[str], float]] = {}
         self._unsub_forecast = None
         self._unsub_minute = None
         self._unsub_calendar = None
@@ -272,8 +279,8 @@ class DudScheduler:
         self._maybe_cold_warning()
 
         # Only one run may start per minute tick; _active is set inside the task.
-        started = False
-        if mode == MODE_AUTO:
+        started = self._maybe_shabbat_preheat()
+        if mode == MODE_AUTO and not started:
             started = self._evaluate_auto_preheat(local)
 
         bit = DAY_BITS[local.weekday()]
@@ -595,6 +602,8 @@ class DudScheduler:
         self, event: str, title: str, message: str,
         actions: Optional[list[tuple[str, int, str]]] = None,
     ) -> None:
+        if self.options.get("shabbat_enabled") and self.options.get("shabbat_quiet", True) and self.shabbat_in_effect():
+            return
         events = self.options.get("notify_events") or []
         if isinstance(events, str):
             events = [e.strip() for e in events.split(",") if e.strip()]
@@ -1055,6 +1064,82 @@ class DudScheduler:
             start -= CHEAP_STEP_MIN * 60
         return best
 
+    def _jc_entity(self, domain: str, key: str) -> Optional[str]:
+        """Entity id of a jewish_calendar entity by its description key (cached 10 min)."""
+        now = time.time()
+        cached = self._jc_cache.get((domain, key))
+        if cached and now - cached[1] < 600:
+            return cached[0]
+        found = None
+        for entry in er.async_get(self.hass).entities.values():
+            if entry.platform == "jewish_calendar" and entry.domain == domain and entry.unique_id.endswith(f"-{key}"):
+                found = entry.entity_id
+                break
+        self._jc_cache[(domain, key)] = (found, now)
+        return found
+
+    def _jc_time(self, key: str) -> Optional[int]:
+        ent = self._jc_entity("sensor", key)
+        state = self.hass.states.get(ent) if ent else None
+        parsed = dt_util.parse_datetime(state.state) if state else None
+        return int(parsed.timestamp()) if parsed else None
+
+    def shabbat_in_effect(self) -> bool:
+        ent = self._jc_entity("binary_sensor", JC_ISSUR_KEY)
+        state = self.hass.states.get(ent) if ent else None
+        if state and state.state in ("on", "off"):
+            return state.state == "on"
+        candle, havdalah = self._jc_time(JC_CANDLE_KEY), self._jc_time(JC_HAVDALAH_KEY)
+        now = int(time.time())
+        return bool(candle and havdalah and candle <= now < havdalah)
+
+    def _shabbat_target(self) -> int:
+        return int(self.options.get("shabbat_target") or self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+
+    def _shabbat_plan(self) -> Optional[dict]:
+        """Upcoming pre-Shabbat/Yom Tov heat, if enabled and candle lighting is near."""
+        if not self.options.get("shabbat_enabled") or self._vacation_active():
+            return None
+        if self.options.get("mode", MODE_SCHEDULE) == MODE_OFF:
+            return None
+        candle = self._jc_time(JC_CANDLE_KEY)
+        now = int(time.time())
+        if not candle or candle <= now or candle - now > SHABBAT_LOOKAHEAD_H * 3600 or candle in self._shabbat_done:
+            return None
+        target = self._shabbat_target()
+        margin = int(self.options.get("auto_pre_heat_margin_min", DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN))
+        duration = (self.estimate_minutes_to_target(target) or 0) + margin
+        start = self.plan_preheat_start(candle, max(duration, margin), now)
+        return {"at": max(now, start), "ready_by": candle, "source": "shabbat", "label": "Shabbat",
+                "duration_min": max(duration, margin), "target_temp": target}
+
+    def _maybe_shabbat_preheat(self) -> bool:
+        plan = self._shabbat_plan()
+        if not plan or self._active or int(time.time()) < plan["at"]:
+            return False
+        self._shabbat_done.add(plan["ready_by"])
+        cur = self._read_temp()
+        if cur is not None and cur >= plan["target_temp"]:
+            return False
+        LOG.info("dud_shemesh: pre-Shabbat heat to %d°C", plan["target_temp"])
+        self.hass.async_create_task(self.async_start_heat(
+            source="shabbat", duration_min=plan["duration_min"],
+            target_temp=plan["target_temp"], note="pre-shabbat",
+        ))
+        return True
+
+    def shabbat_status(self) -> Optional[dict]:
+        if not self.options.get("shabbat_enabled"):
+            return None
+        in_effect = self.shabbat_in_effect()
+        return {
+            "in_effect": in_effect,
+            "locked": in_effect and bool(self.options.get("shabbat_lock", True)),
+            "candle_lighting": self._jc_time(JC_CANDLE_KEY),
+            "havdalah": self._jc_time(JC_HAVDALAH_KEY),
+            "calendar_found": self._jc_entity("sensor", JC_CANDLE_KEY) is not None,
+        }
+
     def _parse_windows(self) -> list[tuple[int, int, str]]:
         out = []
         for chunk in (self.options.get("auto_comfort_windows") or "").split(","):
@@ -1140,6 +1225,8 @@ class DudScheduler:
                     "duration_min": 120,
                     "target_temp": int(self.options.get("legionella_temp", DEFAULT_LEGIONELLA_TEMP)),
                 })
+        if (plan := self._shabbat_plan()) and plan["ready_by"] <= end_ts:
+            out.append(plan)
         out.sort(key=lambda e: e["at"])
         return out
 
@@ -1190,6 +1277,7 @@ class DudScheduler:
             "solar_rise_per_30min": round(rise, 2) if rise is not None else None,
             "solar_gaining": self._is_solar_gaining(),
             "weather_skip_active": self._weather_says_sunny(),
+            "shabbat": self.shabbat_status(),
             "heat_rate_c_per_min": round(self.heat_rate()[0], 3),
             "heat_rate_source": self.heat_rate()[1],
         }

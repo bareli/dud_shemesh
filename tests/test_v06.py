@@ -279,3 +279,44 @@ async def test_close_record_has_cost(hass, freezer):
     freezer.tick(timedelta(minutes=30))
     await data["scheduler"].async_stop_heat()
     assert abs(data["store"].history[0]["cost"] - 0.5) < 0.01
+
+
+# 35
+async def test_shabbat_preheat_status_and_quiet(hass, freezer):
+    from homeassistant.helpers import entity_registry as er
+    from homeassistant.util import dt as dt_util
+    await setup_heater(hass)
+    reg = er.async_get(hass)
+    candle_id = reg.async_get_or_create("sensor", "jewish_calendar", "jc1-upcoming_candle_lighting").entity_id
+    havdalah_id = reg.async_get_or_create("sensor", "jewish_calendar", "jc1-upcoming_havdalah").entity_id
+    issur_id = reg.async_get_or_create("binary_sensor", "jewish_calendar", "jc1-issur_melacha_in_effect").entity_id
+    now = dt_util.utcnow().replace(second=0, microsecond=0)
+    candle = now + timedelta(hours=3)
+    hass.states.async_set(candle_id, candle.isoformat())
+    hass.states.async_set(havdalah_id, (candle + timedelta(hours=25)).isoformat())
+    hass.states.async_set(issur_id, "off")
+    calls = _capture_notify(hass, "mobile_app_phone")
+
+    data = await setup_entry(hass, make_entry(
+        hass, shabbat_enabled=True, shabbat_target=60, notify_targets=["mobile_app_phone"], notify_events=["heat_start"],
+    ))
+    sch = data["scheduler"]
+    plan = [u for u in sch.upcoming() if u["source"] == "shabbat"]
+    assert plan and plan[0]["ready_by"] == int(candle.timestamp()) and plan[0]["target_temp"] == 60
+    # 20 °C to go at the fallback 6 min/°C + 5 min margin -> starts 125 min before candle lighting
+    assert plan[0]["at"] == int(candle.timestamp()) - 125 * 60
+
+    freezer.move_to(candle - timedelta(minutes=124))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert sch.active and sch.active["source"] == "shabbat" and sch.active["target_temp"] == 60
+    assert calls  # before Shabbat notifications still go out
+    await sch.async_stop_heat()
+
+    hass.states.async_set(issur_id, "on")
+    status = sch.now_status()["shabbat"]
+    assert status["in_effect"] and status["locked"]
+    calls.clear()
+    await sch.async_boost(10)
+    await hass.async_block_till_done()
+    assert calls == []  # quiet during Shabbat
