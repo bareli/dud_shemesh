@@ -492,6 +492,25 @@ def _async_register_notification_actions(hass: HomeAssistant) -> None:
 _INTENT_REGISTERED_KEY = f"{DOMAIN}_intent_registered"
 
 
+def _status_speech(hass: HomeAssistant, status: dict) -> str:
+    """One spoken sentence: temperature, heating/ready state, showers."""
+    he = str(hass.config.language or "").lower().startswith("he")
+    temp = status.get("current_temp")
+    target = status.get("target_temp")
+    showers = status.get("showers_available")
+    if temp is None:
+        base = "אין קריאת טמפרטורה מהמיכל" if he else "No tank temperature reading"
+    elif status.get("active"):
+        base = f"הדוד מחמם, המים ב-{temp:.0f} מעלות" if he else f"Heating now, the water is {temp:.0f} degrees"
+    elif target is not None and temp >= target:
+        base = f"המים חמים, {temp:.0f} מעלות" if he else f"The water is hot, {temp:.0f} degrees"
+    else:
+        base = f"המים ב-{temp:.0f} מעלות" if he else f"The water is {temp:.0f} degrees"
+    if showers is not None:
+        base += f", מספיק לכ-{showers} מקלחות" if he else f", enough for about {showers} showers"
+    return base + "."
+
+
 def _async_register_intents(hass: HomeAssistant) -> None:
     if hass.data.get(_INTENT_REGISTERED_KEY):
         return
@@ -529,8 +548,22 @@ def _async_register_intents(hass: HomeAssistant) -> None:
                 response.async_set_speech("Water heater stopped")
                 return response
 
+        class _StatusIntent(intent.IntentHandler):
+            intent_type = "DudShemeshStatus"
+            description = "Is the water hot? Tank temperature, showers and heating state"
+            async def async_handle(self, intent_obj):
+                response = intent_obj.create_response()
+                try:
+                    data = _resolve_entry(hass)
+                except HomeAssistantError:
+                    response.async_set_speech("Dud Shemesh integration not loaded.")
+                    return response
+                response.async_set_speech(_status_speech(hass, data["scheduler"].now_status()))
+                return response
+
         intent.async_register(hass, _BoostIntent())
         intent.async_register(hass, _StopIntent())
+        intent.async_register(hass, _StatusIntent())
         hass.data[_INTENT_REGISTERED_KEY] = True
     except Exception as e:
         LOG.debug("intents not registered: %s", e)

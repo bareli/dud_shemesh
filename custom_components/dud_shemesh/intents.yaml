@@ -6,3 +6,5 @@ DudShemeshBoost:
       required: false
 DudShemeshStop:
   description: Turn off the water heater.
+DudShemeshStatus:
+  description: Report tank temperature, heating state and showers available.

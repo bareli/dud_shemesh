@@ -344,3 +344,19 @@ async def test_options_flow_clears_windows_and_keeps_panel_keys(hass):
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"heater_entity": "input_boolean.dud"})
     await hass.async_block_till_done()
     assert entry.options["auto_comfort_windows"] == "" and entry.options["notify_targets"] == ["mobile_app_x"]
+
+
+# 45
+async def test_intents_status_and_float_minutes(hass):
+    from homeassistant.helpers import intent
+    await setup_heater(hass)
+    data = await setup_entry(hass, make_entry(hass, tank_volume_l=150))
+    hass.states.async_set(TEMP, "60")
+    resp = await intent.async_handle(hass, "test", "DudShemeshStatus", {})
+    speech = resp.speech["plain"]["speech"]
+    assert "60 degrees" in speech and "6 showers" in speech
+    await intent.async_handle(hass, "test", "DudShemeshBoost", {"minutes": {"value": 45.0}})
+    assert data["scheduler"].active["duration_min"] == 45
+    hass.config.language = "he"
+    resp = await intent.async_handle(hass, "test", "DudShemeshStatus", {})
+    assert "מחמם" in resp.speech["plain"]["speech"]
