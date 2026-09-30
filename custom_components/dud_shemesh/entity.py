@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import Entity
@@ -44,6 +45,18 @@ class DudEntity(Entity):
     def cfg(self) -> dict:
         """Integration options (not the enum `options` of sensor/select)."""
         return self._data["options"]
+
+    async def async_require_admin(self) -> None:
+        """Settings (not everyday controls) need an admin when a person triggers them.
+
+        Calls without a user (automations, scripts, the integration itself) pass.
+        """
+        ctx = self._context
+        if ctx is None or ctx.user_id is None:
+            return
+        user = await self.hass.auth.async_get_user(ctx.user_id)
+        if user is not None and not user.is_admin:
+            raise Unauthorized(context=ctx)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(

@@ -23,6 +23,11 @@ from .const import (
     COLD_WARNING_LEAD_MIN,
     COLD_WATER_TEMP,
     DAY_BITS,
+    DEFAULT_FORECAST_CLOUD_MAX,
+    DEFAULT_FORECAST_HOURS,
+    DEFAULT_SOLAR_FORECAST_MIN,
+    FORECAST_REFRESH_MIN,
+    FORECAST_SUNNY_FRACTION,
     MESSAGES,
     DEFAULT_MANUAL_ON_MAX_MIN,
     DEFAULT_MAX_RUN_MIN,
@@ -77,6 +82,8 @@ class DudScheduler:
         self.options = options
         self.entry_id = entry_id
         self._cold_warned: dict[str, int] = {}             # window key -> ready ts
+        self._forecast: Optional[list[dict]] = None         # hourly weather forecast cache
+        self._unsub_forecast = None
         self._unsub_minute = None
         self._unsub_calendar = None
         self._unsub_heater_state = None
@@ -108,6 +115,10 @@ class DudScheduler:
             self._unsub_heater_state = async_track_state_change_event(
                 self.hass, [heater], self._on_heater_state_change
             )
+        if (self.options.get("weather_entity") or "").strip():
+            self._unsub_forecast = async_track_time_interval(
+                self.hass, self._refresh_forecast, timedelta(minutes=FORECAST_REFRESH_MIN)
+            )
         # Heater entity may not exist yet during HA startup; restore once started.
         self._unsub_started = async_at_started(self.hass, self._on_ha_started)
         LOG.info("dud_shemesh scheduler started")
@@ -116,6 +127,8 @@ class DudScheduler:
         self._unsub_started = None
         self._ha_started = True
         await self._restore_active_boost()
+        if self._unsub_forecast:
+            await self._refresh_forecast()
         heater = self.options.get("heater_entity")
         state = self.hass.states.get(heater) if heater else None
         if not self._active and state and state.state in ON_STATES:
@@ -167,6 +180,7 @@ class DudScheduler:
     async def async_stop(self) -> None:
         for attr in (
             "_unsub_minute", "_unsub_calendar", "_unsub_heater_state", "_unsub_started",
+            "_unsub_forecast",
         ):
             unsub = getattr(self, attr)
             if unsub:
@@ -370,18 +384,64 @@ class DudScheduler:
         threshold = float(self.options.get("solar_rise_threshold", DEFAULT_SOLAR_RISE_THRESHOLD))
         return rise >= threshold
 
-    def _weather_says_sunny(self) -> bool:
+    async def _refresh_forecast(self, _now=None) -> None:
         ent = (self.options.get("weather_entity") or "").strip()
-        if not ent:
-            return False
-        s = self.hass.states.get(ent)
-        if not s:
-            return False
+        if not ent or int(self.options.get("forecast_hours") or DEFAULT_FORECAST_HOURS) <= 0:
+            return
+        try:
+            response = await self.hass.services.async_call(
+                "weather", "get_forecasts", {"entity_id": ent, "type": "hourly"},
+                blocking=True, return_response=True,
+            )
+        except Exception as e:
+            LOG.debug("hourly forecast unavailable for %s: %s", ent, e)
+            self._forecast = None
+            return
+        self._forecast = ((response or {}).get(ent) or {}).get("forecast") or None
+
+    def _forecast_sunny(self) -> Optional[bool]:
+        """Mostly sunny over the next forecast_hours, or None when there is no forecast."""
+        hours = int(self.options.get("forecast_hours") or DEFAULT_FORECAST_HOURS)
+        if hours <= 0 or not self._forecast:
+            return None
+        now = dt_util.utcnow()
+        end = now + timedelta(hours=hours)
+        skip_states = self._skip_states()
+        cloud_max = float(self.options.get("forecast_cloud_max") or DEFAULT_FORECAST_CLOUD_MAX)
+        slots = []
+        for item in self._forecast:
+            at = dt_util.parse_datetime(str(item.get("datetime", "")))
+            if at is None or not (now - timedelta(minutes=59) <= at <= end):
+                continue
+            cloud = item.get("cloud_coverage")
+            slots.append(item.get("condition") in skip_states or (cloud is not None and float(cloud) <= cloud_max))
+        if not slots:
+            return None
+        return sum(slots) / len(slots) >= FORECAST_SUNNY_FRACTION
+
+    def _skip_states(self) -> list[str]:
+        raw = str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES))
+        return [x.strip() for x in raw.split(",") if x.strip()]
+
+    def _weather_says_sunny(self) -> bool:
         sun = self.hass.states.get("sun.sun")
         if sun and sun.state == "below_horizon":
             return False  # solar cannot help before sunrise / after sunset
-        states = [x.strip() for x in str(self.options.get("weather_skip_states", DEFAULT_WEATHER_SKIP_STATES)).split(",") if x.strip()]
-        return s.state in states
+        solar_ent = (self.options.get("solar_forecast_entity") or "").strip()
+        if solar_ent:
+            s = self.hass.states.get(solar_ent)
+            try:
+                return float(s.state) >= float(self.options.get("solar_forecast_min") or DEFAULT_SOLAR_FORECAST_MIN)
+            except (AttributeError, TypeError, ValueError):
+                pass  # unavailable: fall back to weather
+        ent = (self.options.get("weather_entity") or "").strip()
+        if not ent:
+            return False
+        forecast = self._forecast_sunny()
+        if forecast is not None:
+            return forecast
+        s = self.hass.states.get(ent)
+        return bool(s) and s.state in self._skip_states()
 
     async def _on_calendar_poll(self, _now) -> None:
         now_ts = int(time.time())

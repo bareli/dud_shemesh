@@ -193,3 +193,56 @@ async def test_cold_warning_once_before_window(hass, freezer):
     await data["store"].async_add_schedule("", 127, f"{at:%H:%M}", 30)
     await _advance(hass, freezer, 60)
     assert not [c for c in calls if "won't be hot" in c["message"]]
+
+
+# security review: settings entities vs everyday controls
+async def test_legionella_switch_requires_admin_vacation_does_not(hass, hass_owner_user):
+    import pytest
+    from homeassistant.core import Context
+    from homeassistant.exceptions import Unauthorized
+    await setup_heater(hass)
+    entry = make_entry(hass)
+    await setup_entry(hass, entry)
+    family = await hass.auth.async_create_user("Family", group_ids=["system-users"])
+    ctx = Context(user_id=family.id)
+    assert not family.is_admin
+    with pytest.raises(Unauthorized):
+        await hass.services.async_call("switch", "turn_on", {"entity_id": _eid(hass, "switch", "_legionella")}, blocking=True, context=ctx)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": _eid(hass, "switch", "_legionella")}, blocking=True)
+    await hass.async_block_till_done()
+    assert entry.options["legionella_enabled"] is True
+    await hass.services.async_call("switch", "turn_on", {"entity_id": _eid(hass, "switch", "_vacation")}, blocking=True, context=ctx)
+    await hass.async_block_till_done()
+    assert entry.options["vacation_until"] > 0
+
+
+# 32
+async def test_forecast_and_solar_entity_skip(hass):
+    from homeassistant.core import SupportsResponse
+    from homeassistant.util import dt as dt_util
+    await setup_heater(hass)
+    now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    forecast = [{"datetime": (now + timedelta(hours=h)).isoformat(), "condition": "partlycloudy",
+                 "cloud_coverage": c} for h, c in enumerate([10, 20, 90, 30])]
+
+    async def get_forecasts(call):
+        return {"weather.home": {"forecast": forecast}}
+
+    hass.services.async_register("weather", "get_forecasts", get_forecasts, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set("weather.home", "cloudy")
+    hass.states.async_set("sun.sun", "above_horizon")
+    data = await setup_entry(hass, make_entry(hass, weather_entity="weather.home", forecast_hours=3))
+    sch = data["scheduler"]
+    await sch._refresh_forecast()
+    assert sch._weather_says_sunny() is True        # 3 of 4 slots <= 40 % cloud
+
+    forecast[:] = [dict(f, cloud_coverage=80) for f in forecast]
+    await sch._refresh_forecast()
+    assert sch._weather_says_sunny() is False
+
+    sch.options["solar_forecast_entity"] = "sensor.solar_next_hour"
+    sch.options["solar_forecast_min"] = 1.5
+    hass.states.async_set("sensor.solar_next_hour", "2.1")
+    assert sch._weather_says_sunny() is True
+    hass.states.async_set("sun.sun", "below_horizon")
+    assert sch._weather_says_sunny() is False

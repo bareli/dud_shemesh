@@ -93,6 +93,17 @@ NOTIFY_EVENTS = (
     "cold_warning",
 )
 
+# Forecast-based skipping (v0.6)
+CONF_FORECAST_HOURS = "forecast_hours"
+CONF_FORECAST_CLOUD_MAX = "forecast_cloud_max"
+CONF_SOLAR_FORECAST_ENTITY = "solar_forecast_entity"
+CONF_SOLAR_FORECAST_MIN = "solar_forecast_min"
+DEFAULT_FORECAST_HOURS = 0       # 0 = use the current weather state only
+DEFAULT_FORECAST_CLOUD_MAX = 40  # % cloud cover still counted as sunny
+DEFAULT_SOLAR_FORECAST_MIN = 1.0
+FORECAST_SUNNY_FRACTION = 0.6
+FORECAST_REFRESH_MIN = 30
+
 # Actionable notifications (mobile_app): "DUDSHEMESH:<cmd>:<arg>:<entry_id>"
 ACTION_PREFIX = "DUDSHEMESH"
 COLD_WARNING_LEAD_MIN = 60

@@ -27,6 +27,13 @@ from .const import (
     CONF_CALENDAR_KEYWORDS,
     CONF_CALENDAR_LOOKAHEAD_MIN,
     CONF_FAIL_DETECTION_ENABLED,
+    CONF_FORECAST_CLOUD_MAX,
+    CONF_FORECAST_HOURS,
+    CONF_SOLAR_FORECAST_ENTITY,
+    CONF_SOLAR_FORECAST_MIN,
+    DEFAULT_FORECAST_CLOUD_MAX,
+    DEFAULT_FORECAST_HOURS,
+    DEFAULT_SOLAR_FORECAST_MIN,
     CONF_NOTIFY_EVENTS,
     CONF_NOTIFY_TARGETS,
     CONF_FAIL_DETECTION_MINUTES,
@@ -253,6 +260,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "max_tank_temp": entry.options.get(CONF_MAX_TANK_TEMP, DEFAULT_MAX_TANK_TEMP),
         "sensor_stale_min": entry.options.get(CONF_SENSOR_STALE_MIN, DEFAULT_SENSOR_STALE_MIN),
         "tank_volume_l": entry.options.get(CONF_TANK_VOLUME_L, DEFAULT_TANK_VOLUME_L),
+        "forecast_hours": entry.options.get(CONF_FORECAST_HOURS, DEFAULT_FORECAST_HOURS),
+        "forecast_cloud_max": entry.options.get(CONF_FORECAST_CLOUD_MAX, DEFAULT_FORECAST_CLOUD_MAX),
+        "solar_forecast_entity": entry.options.get(CONF_SOLAR_FORECAST_ENTITY, ""),
+        "solar_forecast_min": entry.options.get(CONF_SOLAR_FORECAST_MIN, DEFAULT_SOLAR_FORECAST_MIN),
     }
 
     scheduler = DudScheduler(hass, store, options, entry.entry_id)
@@ -520,8 +531,9 @@ def _ws_float(lo: float, hi: float):
     return vol.All(vol.Coerce(float), vol.Range(min=lo, max=hi))
 
 
-# Keys any user may change from the panel/card; everything else needs admin.
-WS_PUBLIC_OPTION_KEYS = {CONF_MODE, CONF_TARGET_TEMP}
+# Everyday controls any user may change (also exposed as entities); everything
+# else is configuration and needs an admin.
+WS_PUBLIC_OPTION_KEYS = {CONF_MODE, CONF_TARGET_TEMP, CONF_VACATION_UNTIL, CONF_VACATION_HOLD_TEMP}
 
 WS_OPTION_SCHEMA = {
     vol.Optional(CONF_TARGET_TEMP): _ws_int(20, 80),
@@ -553,6 +565,10 @@ WS_OPTION_SCHEMA = {
     vol.Optional(CONF_MAX_TANK_TEMP): _ws_int(50, 90),
     vol.Optional(CONF_SENSOR_STALE_MIN): _ws_int(0, 1440),
     vol.Optional(CONF_TANK_VOLUME_L): _ws_int(0, 1000),
+    vol.Optional(CONF_FORECAST_HOURS): _ws_int(0, 12),
+    vol.Optional(CONF_FORECAST_CLOUD_MAX): _ws_int(0, 100),
+    vol.Optional(CONF_SOLAR_FORECAST_ENTITY): vol.Any(None, cv.string),
+    vol.Optional(CONF_SOLAR_FORECAST_MIN): _ws_float(0, 1000),
 }
 
 
