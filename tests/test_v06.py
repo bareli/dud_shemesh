@@ -117,3 +117,18 @@ async def test_stale_boost_buttons_removed(hass):
     ids = [e.unique_id for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id) if e.domain == "button"]
     assert any(i.endswith("_boost_60") for i in ids)
     assert not any(i.endswith("_boost_30") for i in ids)
+
+
+# 46
+async def test_ws_list_entries_and_entry_scoped_state(hass, hass_ws_client):
+    await setup_heater(hass, "dud", "dud2")
+    e1 = make_entry(hass)
+    e2 = make_entry(hass, heater="input_boolean.dud2", target_temp=48)
+    await setup_entry(hass, e1)
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "dud_shemesh/list_entries"})
+    msg = await ws.receive_json()
+    assert [e["entry_id"] for e in msg["result"]] == [e1.entry_id, e2.entry_id]
+    await ws.send_json({"id": 2, "type": "dud_shemesh/get_state", "entry_id": e2.entry_id})
+    msg = await ws.receive_json()
+    assert msg["result"]["entry_id"] == e2.entry_id and msg["result"]["status"]["target_temp"] == 48

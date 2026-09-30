@@ -15,7 +15,7 @@ from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
@@ -595,6 +595,17 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
         new_options = async_update_options(hass_inner, data["entry"], patch)
         connection.send_result(msg["id"], {"options": new_options})
 
+    @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/list_entries"})
+    @callback
+    def _ws_list_entries(hass_inner, connection, msg):
+        loaded = hass_inner.data.get(DOMAIN) or {}
+        connection.send_result(msg["id"], [
+            {"entry_id": e.entry_id, "title": e.title}
+            for e in hass_inner.config_entries.async_entries(DOMAIN)
+            if e.entry_id in loaded
+        ])
+
+    websocket_api.async_register_command(hass, _ws_list_entries)
     websocket_api.async_register_command(hass, _ws_get_state)
     websocket_api.async_register_command(hass, _ws_update_options)
     hass.data[WS_REGISTERED_KEY] = True

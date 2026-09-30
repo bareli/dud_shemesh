@@ -27,6 +27,11 @@ const STYLES = `
 }
 .header .brand { display: flex; align-items: baseline; gap: 8px; }
 .header h1 { margin: 0; font-size: 24px; font-weight: 500; }
+.tank-picker {
+  font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--ds-border); background: var(--ds-card); color: var(--ds-text);
+  max-width: 200px;
+}
 .header .ver { opacity: .55; font-size: 11px; }
 .icon-btn {
   background: transparent; border: none; cursor: pointer;
@@ -345,7 +350,7 @@ function el(tag, attrs = {}, children = []) {
 
 const I18N = {
   en: {
-    brand: "Dud Shemesh", control: "Control", reports: "Reports", settings: "Settings",
+    brand: "Dud Shemesh", tank: "Water heater", control: "Control", reports: "Reports", settings: "Settings",
     target: "Target", target_val: (v, u) => `Target ${v}${u}`, mode: "Mode",
     auto: "Auto", schedule: "Schedule", off: "Off",
     mode_hint_auto: "Heats ahead of your comfort windows and runs your schedules, skipping when the sun is doing the job.",
@@ -410,7 +415,7 @@ const I18N = {
     days_short: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
   },
   he: {
-    brand: "דוד שמש", control: "בקרה", reports: "דוחות", settings: "הגדרות",
+    brand: "דוד שמש", tank: "דוד", control: "בקרה", reports: "דוחות", settings: "הגדרות",
     target: "יעד", target_val: (v, u) => `יעד ${v}${u}`, mode: "מצב",
     auto: "אוטומטי", schedule: "לוח זמנים", off: "כבוי",
     mode_hint_auto: "מחמם מראש לפני חלונות הנוחות ומריץ את לוחות הזמנים, ומדלג כשהשמש עושה את העבודה.",
@@ -596,8 +601,32 @@ class DudPanel extends HTMLElement {
     this.appendChild(this._app);
     this._modalRoot = el("div", { dir: this._lang === "he" ? "rtl" : "ltr" });
     this.appendChild(this._modalRoot);
-    this._refresh().then(() => this._subscribeHeaterState());
+    this._loadEntries().then(() => this._refresh()).then(() => this._subscribeHeaterState());
     this._startTimers();
+  }
+
+  async _loadEntries() {
+    try {
+      this._entries = await this._hass.callWS({ type: "dud_shemesh/list_entries" });
+    } catch (e) {
+      this._entries = [];
+    }
+    let saved = null;
+    try { saved = localStorage.getItem("dud_shemesh_entry"); } catch (e) {}
+    const ids = this._entries.map(e => e.entry_id);
+    this._entryId = ids.includes(saved) ? saved : (ids[0] || null);
+  }
+
+  _withEntry(obj) {
+    return this._entryId ? Object.assign({ entry_id: this._entryId }, obj) : obj;
+  }
+
+  _selectEntry(id) {
+    this._entryId = id;
+    try { localStorage.setItem("dud_shemesh_entry", id); } catch (e) {}
+    this._state = null;
+    this._lastHeaterState = undefined;
+    this._refresh().then(() => this._subscribeHeaterState());
   }
 
   async _subscribeHeaterState() {
@@ -664,7 +693,7 @@ class DudPanel extends HTMLElement {
 
   async _refresh() {
     try {
-      this._state = await this._hass.callWS({ type: "dud_shemesh/get_state" });
+      this._state = await this._hass.callWS(this._withEntry({ type: "dud_shemesh/get_state" }));
       if (this._state && typeof this._state.now === "number") {
         this._serverOffset = this._state.now - Math.floor(Date.now() / 1000);
       }
@@ -673,6 +702,11 @@ class DudPanel extends HTMLElement {
       if (focused && focused.tagName === "INPUT" && this.contains(focused)) return;
       this._render();
     } catch (e) {
+      if (this._entryId && e && e.code === "not_loaded") {
+        // Remembered tank was removed; fall back to the first one.
+        await this._loadEntries();
+        if (this._entryId) return this._refresh();
+      }
       this._renderError(e);
     }
   }
@@ -720,7 +754,7 @@ class DudPanel extends HTMLElement {
 
   async _callService(service, data) {
     try {
-      await this._hass.callService("dud_shemesh", service, data || {});
+      await this._hass.callService("dud_shemesh", service, this._withEntry(data || {}));
       this._toast(this._t("done"), "ok");
       setTimeout(() => this._refresh(), 300);
       return true;
@@ -732,7 +766,7 @@ class DudPanel extends HTMLElement {
 
   async _saveOptions(patch) {
     try {
-      await this._hass.callWS(Object.assign({ type: "dud_shemesh/update_options" }, patch));
+      await this._hass.callWS(this._withEntry(Object.assign({ type: "dud_shemesh/update_options" }, patch)));
       this._toast(this._t("saved"), "ok");
       setTimeout(() => this._refresh(), 300);
     } catch (e) {
@@ -751,7 +785,10 @@ class DudPanel extends HTMLElement {
         el("h1", {}, this._t("brand")),
         el("span", { class: "ver", dir: "ltr" }, `v${PANEL_VERSION}`),
       ]),
-      el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: this._t("settings"), "aria-label": this._t("settings") }, "⚙"),
+      el("div", { style: "display:flex;align-items:center;gap:6px;" }, [
+        this._renderTankPicker(),
+        el("button", { class: "icon-btn", onClick: () => this._openSettings(), title: this._t("settings"), "aria-label": this._t("settings") }, "⚙"),
+      ]),
     ]));
 
     const tabs = el("div", { class: "nav-tabs", role: "tablist" });
@@ -792,6 +829,18 @@ class DudPanel extends HTMLElement {
     this._app.appendChild(this._renderModeToggle(opts.mode || "schedule"));
     this._app.appendChild(this._renderTimeline(this._state.history || [], status));
     this._app.appendChild(this._renderSchedules(this._state.schedules || []));
+  }
+
+  _renderTankPicker() {
+    if (!this._entries || this._entries.length < 2) return null;
+    const sel = el("select", { class: "tank-picker", "aria-label": this._t("tank") });
+    this._entries.forEach(e => {
+      const o = el("option", { value: e.entry_id }, e.title);
+      if (e.entry_id === this._entryId) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", () => this._selectEntry(sel.value));
+    return sel;
   }
 
   _renderNextHeat(status) {
