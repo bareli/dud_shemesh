@@ -36,7 +36,12 @@ from .const import (
     CONF_LEGIONELLA_DAYS,
     CONF_LEGIONELLA_ENABLED,
     CONF_LEGIONELLA_TEMP,
+    CONF_MANUAL_ON_MAX_MIN,
+    CONF_MAX_RUN_MIN,
+    CONF_MAX_TANK_TEMP,
     CONF_MODE,
+    CONF_SENSOR_STALE_MIN,
+    CONF_TANK_VOLUME_L,
     CONF_SOLAR_RISE_THRESHOLD,
     CONF_SOLAR_TRACK_MINUTES,
     CONF_TARIFF_ILS_PER_KWH,
@@ -55,7 +60,13 @@ from .const import (
     DEFAULT_HEATER_WATTAGE,
     DEFAULT_LEGIONELLA_DAYS,
     DEFAULT_LEGIONELLA_TEMP,
+    DEFAULT_MANUAL_ON_MAX_MIN,
+    DEFAULT_MAX_RUN_MIN,
+    DEFAULT_MAX_TANK_TEMP,
     DEFAULT_MODE,
+    DEFAULT_SENSOR_STALE_MIN,
+    DEFAULT_TANK_VOLUME_L,
+    LEGACY_WEATHER_SKIP_STATES,
     DEFAULT_SOLAR_RISE_THRESHOLD,
     DEFAULT_SOLAR_TRACK_MINUTES,
     DEFAULT_TARIFF_ILS_PER_KWH,
@@ -179,6 +190,12 @@ async def _async_register_card_resource(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # v0.5: "clear-night" in the old default skipped pre-sunrise heating.
+    if entry.options.get(CONF_WEATHER_SKIP_STATES) == LEGACY_WEATHER_SKIP_STATES:
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, CONF_WEATHER_SKIP_STATES: DEFAULT_WEATHER_SKIP_STATES},
+        )
+
     entries = hass.config_entries.async_entries(DOMAIN)
     store = DudStore(
         hass, entry.entry_id,
@@ -222,6 +239,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "calendar_entity": entry.options.get(CONF_CALENDAR_ENTITY, ""),
         "calendar_lookahead_min": entry.options.get(CONF_CALENDAR_LOOKAHEAD_MIN, DEFAULT_CALENDAR_LOOKAHEAD_MIN),
         "calendar_keywords": entry.options.get(CONF_CALENDAR_KEYWORDS, DEFAULT_CALENDAR_KEYWORDS),
+        "manual_on_max_min": entry.options.get(CONF_MANUAL_ON_MAX_MIN, DEFAULT_MANUAL_ON_MAX_MIN),
+        "max_run_min": entry.options.get(CONF_MAX_RUN_MIN, DEFAULT_MAX_RUN_MIN),
+        "max_tank_temp": entry.options.get(CONF_MAX_TANK_TEMP, DEFAULT_MAX_TANK_TEMP),
+        "sensor_stale_min": entry.options.get(CONF_SENSOR_STALE_MIN, DEFAULT_SENSOR_STALE_MIN),
+        "tank_volume_l": entry.options.get(CONF_TANK_VOLUME_L, DEFAULT_TANK_VOLUME_L),
     }
 
     scheduler = DudScheduler(hass, store, options)
@@ -300,6 +322,7 @@ SCHEMA_UPDATE_SCHEDULE = vol.Schema({
     vol.Optional("target_temp"): _INT_TEMP,
     vol.Optional("name"): cv.string,
     vol.Optional("enabled"): cv.boolean,
+    vol.Optional("skip_until"): vol.All(vol.Coerce(int), vol.Range(min=0)),
 })
 SCHEMA_REMOVE_SCHEDULE = vol.Schema({
     _ENTRY_ID: cv.string,
@@ -357,6 +380,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             ("duration_minutes", "duration_min"),
             ("target_temp", "target_temp"),
             ("enabled", "enabled"),
+            ("skip_until", "skip_until"),
         ]:
             if k_in in call.data:
                 fields[k_out] = call.data[k_in]
@@ -495,6 +519,11 @@ WS_OPTION_SCHEMA = {
     vol.Optional(CONF_CALENDAR_ENTITY): vol.Any(None, cv.string),
     vol.Optional(CONF_CALENDAR_LOOKAHEAD_MIN): _ws_int(1, 120),
     vol.Optional(CONF_CALENDAR_KEYWORDS): vol.Any(None, cv.string),
+    vol.Optional(CONF_MANUAL_ON_MAX_MIN): _ws_int(0, 720),
+    vol.Optional(CONF_MAX_RUN_MIN): _ws_int(30, 720),
+    vol.Optional(CONF_MAX_TANK_TEMP): _ws_int(50, 90),
+    vol.Optional(CONF_SENSOR_STALE_MIN): _ws_int(0, 1440),
+    vol.Optional(CONF_TANK_VOLUME_L): _ws_int(0, 1000),
 }
 
 
@@ -540,6 +569,8 @@ def _async_register_ws_commands(hass: HomeAssistant) -> None:
             "notify_services": notify_services,
             "notify_events": list(NOTIFY_EVENTS),
             "temp_samples": getattr(scheduler, "_temp_samples", []),
+            "schedule_next": {s["id"]: scheduler.next_schedule_run(s) for s in store.schedules},
+            "energy_kwh_total": scheduler.energy_total_kwh(),
             "now": int(time.time()),
         })
 

@@ -25,7 +25,8 @@ CONF_FAIL_DETECTION_RISE = "fail_detection_rise"
 CONF_SOLAR_TRACK_MINUTES = "solar_track_minutes"
 CONF_SOLAR_RISE_THRESHOLD = "solar_rise_threshold"
 
-DEFAULT_WEATHER_SKIP_STATES = "sunny,clear-night"
+DEFAULT_WEATHER_SKIP_STATES = "sunny"
+LEGACY_WEATHER_SKIP_STATES = "sunny,clear-night"
 DEFAULT_AUTO_PRE_HEAT_MARGIN_MIN = 5
 DEFAULT_FAIL_DETECTION_MINUTES = 8
 DEFAULT_FAIL_DETECTION_RISE = 1.0
@@ -51,6 +52,25 @@ CONF_CALENDAR_KEYWORDS = "calendar_keywords"
 DEFAULT_CALENDAR_LOOKAHEAD_MIN = 10
 DEFAULT_CALENDAR_KEYWORDS = "dud,water,חם,מים,דוד"
 
+# Safety (v0.5)
+CONF_MANUAL_ON_MAX_MIN = "manual_on_max_min"
+CONF_MAX_RUN_MIN = "max_run_min"
+CONF_MAX_TANK_TEMP = "max_tank_temp"
+CONF_SENSOR_STALE_MIN = "sensor_stale_min"
+DEFAULT_MANUAL_ON_MAX_MIN = 60   # 0 = don't adopt manual turn-ons
+DEFAULT_MAX_RUN_MIN = 180
+DEFAULT_MAX_TANK_TEMP = 75
+DEFAULT_SENSOR_STALE_MIN = 120   # 0 = never treat the sensor as stale
+
+# Tank model (v0.5) for the showers-available estimate
+CONF_TANK_VOLUME_L = "tank_volume_l"
+DEFAULT_TANK_VOLUME_L = 0        # 0 = unknown, estimate hidden
+COLD_WATER_TEMP = 20.0
+SHOWER_TEMP = 40.0
+SHOWER_LITRES = 50.0             # ~8 min at 6 L/min, mixed to SHOWER_TEMP
+
+UPCOMING_HORIZON_H = 24
+
 NOTIFY_EVENTS = (
     "heat_start",
     "heat_end",
@@ -59,6 +79,8 @@ NOTIFY_EVENTS = (
     "skipped_solar",
     "skipped_weather",
     "legionella_done",
+    "safety_stop",
+    "sensor_stale",
 )
 
 DEFAULT_TARGET_TEMP = 55

@@ -38,29 +38,36 @@ Compact gauge + boost + mode for embedding on any dashboard view.
 
 **Hero UI**
 - Big circular SVG gauge with **drag-to-set** target marker, live color (cool→hot), pulsing ring while heating.
-- Live **status badge**: Ready / Heating / Waiting / Solar / Cold.
-- Side pills for "Ends in", "Target", and **Anti-Legionella next-due**.
+- Live **status badge**: Ready / Heating / Waiting / Solar / Cold, with the run source while heating ("Heating · Boost").
+- **Next heat** answer: "Hot by 06:30" / "Morning shower · tomorrow 06:15, in 17h 20m".
+- **Showers available** estimate (set the tank volume in Settings).
+- Target −/+ buttons next to the drag marker.
+- Side pills for "Ends in", "To target", showers, mode and **Anti-Legionella next-due**.
 
 **Control**
 - One-tap **boost** buttons; durations are configurable (default `30,60,120` min).
 - Boost while heating **extends** the active run instead of restarting it.
 - **Mode toggle**: Auto / Schedule / Off.
-- Recurring **schedules** (HH:MM + days + duration, optional target temperature).
-- Companion Lovelace **`custom:dud-shemesh-card`** with the same look.
+- Recurring **schedules** (HH:MM + days + duration, optional target temperature), on/off switch, next-run line and **skip next** (holiday / away one day).
+- Today timeline shows past runs **and planned** heating.
+- Companion Lovelace **`custom:dud-shemesh-card`**: gauge, −/+ target, next heat, boost / extend / stop, mode. Visual editor with tank picker (`entry_id`), `title`, `show_mode`.
 
 **Smart layer**
 - **Real Auto mode**: predictive pre-heat for configured comfort windows (`06:30-08:00,19:00-21:00`).
 - **Skip-if-warm**: schedule run is skipped when tank already at target.
 - **Solar gain detection**: rolling 30-min temperature delta; auto-skips electric when sun is contributing.
-- **Weather-aware skip**: optional weather entity; sunny / clear-night → skip schedule.
+- **Weather-aware skip**: optional weather entity; `sunny` → skip schedule. Never applied between sunset and sunrise (uses `sun.sun`).
 - **Soil-of-water-heaters style**: anti-Legionella weekly cycle to a configurable temp.
 
 **Reliability**
 - **Heat-not-rising detection**: verifies tank actually warms up after element turns on; alerts on element/breaker fault.
+- **"Forgot the dud on" guard**: a heater switched on outside Dud Shemesh is adopted as a run and turned off after 60 min (configurable, 0 = off).
+- **Hard limits**: maximum run length (default 180 min, caps boosts too) and over-temperature cutoff (default 75 °C).
+- **Stale sensor detection**: a temperature sensor that stops reporting (default 120 min) is ignored; runs fall back to time-only and you get a `sensor_stale` notification.
 
 **Visibility**
-- **Reports tab**: today / 7-day / 30-day on-time minutes, energy (kWh), cost (₪) using configurable IEC tariff. Heater health avg °C/min trend. Skip-reason summary. 24h temperature graph.
-- 3 sensors: status, tank temperature, minutes-to-target.
+- **Reports tab**: "Saved this month ₪X" from runs the sun made unnecessary, 30-day electric vs avoided kWh chart, today / 7-day / 30-day on-time, energy (kWh) and cost (₪). Heater health avg °C/min trend. Run outcomes.
+- 4 sensors: status (with `next_heat_*`, `hot_by`, `showers_available` attributes), tank temperature, minutes-to-target, and **energy (kWh, `total_increasing`) for the HA Energy dashboard**.
 
 **Triggers & convenience**
 - **Vacation mode**: pick an "active until" date; schedules suspended, tank held at anti-mold temp (default 30 °C).
@@ -69,10 +76,10 @@ Compact gauge + boost + mode for embedding on any dashboard view.
 - **Notifications**: pick `notify.*` services + which events push (heat_start/end, target reached, fail, skips, anti-Legionella).
 
 **Multi-instance**
-- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler and has its own storage file (`.storage/dud_shemesh.data.<entry_id>`). All services take an optional `entry_id`; without it they act on the first entry. (Panel UI shows the first entry; multi-tank picker planned for v0.5.)
+- Add the integration multiple times for vacation homes or two heaters. Each runs its own scheduler and has its own storage file (`.storage/dud_shemesh.data.<entry_id>`). All services take an optional `entry_id`; without it they act on the first entry. (Panel UI shows the first entry; the Lovelace card can target any entry.)
 
 **i18n**
-- English + Hebrew config strings, **right-to-left** panel layout when HA language is `he`.
+- Full English + Hebrew UI (panel and card), **right-to-left** layout when HA language is `he`, Sunday-first week.
 
 **Platform**
 - Single-instance config flow + options flow with selectors.

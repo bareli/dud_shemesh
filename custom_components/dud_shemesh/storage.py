@@ -27,6 +27,7 @@ class DudStore:
             "history": [],
             "active_boost": None,
             "last_legionella": 0,
+            "energy_kwh_total": 0.0,
         }
 
     async def async_load(self) -> None:
@@ -38,6 +39,7 @@ class DudStore:
             self._data["history"] = data.get("history", [])
             self._data["active_boost"] = data.get("active_boost")
             self._data["last_legionella"] = int(data.get("last_legionella", 0))
+            self._data["energy_kwh_total"] = float(data.get("energy_kwh_total", 0.0))
 
     async def _async_claim_legacy(self) -> Optional[dict]:
         """Move the pre-0.4.13 shared file (one key for all entries) to this entry."""
@@ -70,6 +72,16 @@ class DudStore:
     @property
     def last_legionella(self) -> int:
         return int(self._data.get("last_legionella", 0))
+
+    @property
+    def energy_kwh_total(self) -> float:
+        return float(self._data.get("energy_kwh_total", 0.0))
+
+    async def async_add_energy(self, kwh: float) -> None:
+        if kwh <= 0:
+            return
+        self._data["energy_kwh_total"] = self.energy_kwh_total + float(kwh)
+        await self.async_save()
 
     def get_schedule(self, schedule_id: str) -> Optional[dict]:
         for s in self._data["schedules"]:
@@ -104,9 +116,9 @@ class DudStore:
         s = self.get_schedule(schedule_id)
         if not s:
             return None
-        for k in ("name", "days_mask", "time_hhmm", "duration_min", "target_temp", "enabled"):
+        for k in ("name", "days_mask", "time_hhmm", "duration_min", "target_temp", "enabled", "skip_until"):
             if k in fields and fields[k] is not None:
-                if k in ("days_mask", "duration_min", "target_temp"):
+                if k in ("days_mask", "duration_min", "target_temp", "skip_until"):
                     s[k] = int(fields[k])
                 elif k == "enabled":
                     s[k] = bool(fields[k])
