@@ -71,6 +71,14 @@ SHOWER_LITRES = 50.0             # ~8 min at 6 L/min, mixed to SHOWER_TEMP
 
 UPCOMING_HORIZON_H = 24
 
+# Learned heat rate (v0.6)
+HEAT_RATE_ALPHA = 0.3            # EMA weight of the newest run
+HEAT_RATE_MIN_RUN_MIN = 10       # ignore shorter runs
+HEAT_RATE_MIN_SAMPLES = 2        # runs needed before the learned rate is trusted
+FALLBACK_MIN_PER_C = 6.0         # no data, no tank volume
+ELEMENT_EFFICIENCY = 0.95
+WATER_KJ_PER_L_C = 4.186
+
 NOTIFY_EVENTS = (
     "heat_start",
     "heat_end",

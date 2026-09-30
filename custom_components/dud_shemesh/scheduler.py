@@ -25,7 +25,13 @@ from .const import (
     DEFAULT_MAX_RUN_MIN,
     DEFAULT_MAX_TANK_TEMP,
     DEFAULT_SENSOR_STALE_MIN,
+    ELEMENT_EFFICIENCY,
+    FALLBACK_MIN_PER_C,
+    HEAT_RATE_ALPHA,
+    HEAT_RATE_MIN_RUN_MIN,
+    HEAT_RATE_MIN_SAMPLES,
     SHOWER_LITRES,
+    WATER_KJ_PER_L_C,
     SHOWER_TEMP,
     UPCOMING_HORIZON_H,
     DEFAULT_FAIL_DETECTION_MINUTES,
@@ -675,6 +681,7 @@ class DudScheduler:
             actual_min = round(max(0, ended_at - started_at) / 60, 1)
             ending_temp = self._read_temp()
             await self.store.async_add_energy(actual_min / 60 * self._wattage_kw())
+            await self._learn_heat_rate(active, status, actual_min, ending_temp)
             if active.get("source") == "manual" and status == "completed":
                 await self._notify(
                     "safety_stop", "Dud Shemesh — safety",
@@ -819,17 +826,40 @@ class DudScheduler:
             domain, service, {"entity_id": entity_id}, blocking=True
         )
 
-    def estimate_minutes_to_target(self) -> Optional[int]:
+    async def _learn_heat_rate(self, active: dict, status: str, actual_min: float, ending_temp) -> None:
+        """Fold a finished run's °C/min into the tank's moving average."""
+        if status not in ("completed", "target_reached") or actual_min < HEAT_RATE_MIN_RUN_MIN:
+            return
+        start = active.get("starting_temp")
+        if start is None or ending_temp is None or ending_temp <= start:
+            return
+        rate = (ending_temp - start) / actual_min
+        learned = self.store.heat_rate
+        prev, n = learned.get("c_per_min"), int(learned.get("samples") or 0)
+        new = rate if prev is None else HEAT_RATE_ALPHA * rate + (1 - HEAT_RATE_ALPHA) * float(prev)
+        await self.store.async_set_heat_rate(new, n + 1)
+
+    def heat_rate(self) -> tuple[Optional[float], str]:
+        """Heating speed in °C/min and where it came from: learned, physics or fallback."""
+        learned = self.store.heat_rate
+        if learned.get("c_per_min") and int(learned.get("samples") or 0) >= HEAT_RATE_MIN_SAMPLES:
+            return float(learned["c_per_min"]), "learned"
+        volume = float(self.options.get("tank_volume_l") or 0)
+        kw = self._wattage_kw()
+        if volume > 0 and kw > 0:
+            return kw * 60 * ELEMENT_EFFICIENCY / (volume * WATER_KJ_PER_L_C), "physics"
+        return 1 / FALLBACK_MIN_PER_C, "fallback"
+
+    def estimate_minutes_to_target(self, target: Optional[float] = None) -> Optional[int]:
         cur = self._read_temp()
         if cur is None:
             return None
-        target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
+        if target is None:
+            target = int(self.options.get("target_temp") or DEFAULT_TARGET_TEMP)
         if cur >= target:
             return 0
-        # Crude estimate: 2 kW heater raises typical 150L tank by ~10°C in ~45 min.
-        # Without history of actual rate, fall back to flat 5°C per 30 min.
-        delta = target - cur
-        return int(round(delta * 6.0))  # ~6 minutes per °C
+        rate, _ = self.heat_rate()
+        return max(1, int(round((target - cur) / rate)))
 
     def _parse_windows(self) -> list[tuple[int, int, str]]:
         out = []
@@ -966,6 +996,8 @@ class DudScheduler:
             "solar_rise_per_30min": round(rise, 2) if rise is not None else None,
             "solar_gaining": self._is_solar_gaining(),
             "weather_skip_active": self._weather_says_sunny(),
+            "heat_rate_c_per_min": round(self.heat_rate()[0], 3),
+            "heat_rate_source": self.heat_rate()[1],
         }
 
     def solar_rise_per_30min(self) -> Optional[float]:
