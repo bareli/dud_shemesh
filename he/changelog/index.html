@@ -1,0 +1,929 @@
+
+<!doctype html>
+<html lang="he" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Smart solar water heater (dud shemesh) controller for Home Assistant">
+      
+      
+      
+        <link rel="canonical" href="https://bareli.github.io/dud_shemesh/he/changelog/">
+      
+      
+        <link rel="prev" href="../troubleshooting/">
+      
+      
+      
+        
+          <link rel="alternate" href="../../changelog/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="he">
+        
+      
+      
+      <link rel="icon" href="../../assets/icon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>יומן שינויים - Dud Shemesh</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="rtl" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          לדלג לתוכן
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="כותרת עליונה">
+    <a href="../" title="Dud Shemesh" class="md-header__button md-logo" aria-label="Dud Shemesh" data-md-component="logo">
+      
+  <img src="../../assets/icon.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Dud Shemesh
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              יומן שינויים
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="בחירת שפה">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../changelog/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="he" class="md-select__link">
+              עברית
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="חיפוש" placeholder="חיפוש" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="חיפוש">
+        
+        <button type="reset" class="md-search__icon md-icon" title="ניקוי" aria-label="ניקוי" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            אתחול חיפוש
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/bareli/dud_shemesh" title="לעבור אל המאגר" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bareli/dud_shemesh
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="לשוניות" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  בית
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../install/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  התקנה
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  הגדרות
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../features/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  יכולות
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../examples/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  דוגמאות
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  פתרון בעיות
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  יומן שינויים
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ניווט" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="Dud Shemesh" class="md-nav__button md-logo" aria-label="Dud Shemesh" data-md-component="logo">
+      
+  <img src="../../assets/icon.png" alt="logo">
+
+    </a>
+    Dud Shemesh
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/bareli/dud_shemesh" title="לעבור אל המאגר" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    bareli/dud_shemesh
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    בית
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    התקנה
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    הגדרות
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    יכולות
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    דוגמאות
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    פתרון בעיות
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    יומן שינויים
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="תוכן העניינים">
+  
+  
+  
+    
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/bareli/dud_shemesh/edit/main/docs/changelog.he.md" title="עריכת הדף הזה" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="_1">יומן שינויים<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>יומן השינויים נכתב באנגלית, כפי שהוא מופיע במאגר.</p>
+<h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
+<h2 id="061-accessibility-44">0.6.1 - accessibility (#44)<a class="headerlink" href="#061-accessibility-44" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Target gauge is a keyboard slider (<code>role="slider"</code>): arrows ±1 °C, PgUp/PgDn ±5, Home/End min/max, with a spoken value ("Target 55°C, tank 43°C"). −/+ buttons have real labels.</li>
+<li>Keyboard focus survives the panel's and card's periodic refresh (it used to jump to the page start every 5 s).</li>
+<li>Tabs, mode switch and Settings tabs follow the WAI-ARIA pattern: arrow keys / Home / End, roving tabindex.</li>
+<li>Dialogs: focus moves into the dialog, Tab stays inside, Esc closes, focus returns to the button that opened it.</li>
+<li>Toasts are announced (status / alert), the Today timeline and both charts have text descriptions, schedule switches are <code>role="switch"</code> with the schedule name, delete buttons are labelled.</li>
+<li><code>lang</code> set on panel and card so screen readers pronounce Hebrew correctly; visible focus rings on every control; animations off with <code>prefers-reduced-motion</code>.</li>
+</ul>
+<h2 id="060-a-real-appliance-in-home-assistant">0.6.0 - a real appliance in Home Assistant<a class="headerlink" href="#060-a-real-appliance-in-home-assistant" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>#28 Native entities</strong>: one device per water heater with a <code>water_heater</code> entity (target, mode, away = vacation, on/off), boost / stop / anti-Legionella buttons, mode select, heat-now / vacation / anti-Legionella switches, heating / solar / sensor-problem binary sensors. Entity names in English and Hebrew.</li>
+<li><strong>#31 Learned heat rate</strong>: °C/min learned per tank from clean runs (moving average), physics fallback from tank volume × wattage; drives minutes-to-target, auto pre-heat, "hot by" and Shabbat pre-heat.</li>
+<li><strong>#46 Tank picker</strong> in the panel header for multi-tank setups (remembered per browser); new <code>dud_shemesh/list_entries</code> WS command.</li>
+<li><strong>#33 Actionable notifications</strong> for companion-app targets (Heat now, Boost 1 h, Keep 30 min, Turn off) and a new <strong>cold warning</strong> 60 min before a comfort window when nothing is planned. Notification texts in Hebrew when HA's language is Hebrew. New events <code>manual_on</code>, <code>cold_warning</code>.</li>
+<li><strong>#32 Forecast-based solar skip</strong>: hourly forecast (condition / cloud cover over the next N hours) or a solar production forecast sensor, instead of only the current weather state.</li>
+<li><strong>#34 Time-of-use tariffs</strong>: price windows, auto pre-heat moves to the cheapest hours that still finish in time (small standby-loss penalty), per-run <code>cost</code> in history, TOU-aware Reports and savings.</li>
+<li><strong>#35 Shabbat mode</strong> (Jewish Calendar integration): pre-heat for candle lighting, optional control lock and quiet notifications until havdalah.</li>
+<li><strong>#37 Settings rework</strong>: tabbed sections, entity suggestions for weather / calendar / solar sensors, row editors for comfort windows and price windows, calendar settings exposed; config flow asks for tank volume, price and comfort windows with validation. Settings gear shown to admins only.</li>
+<li><strong>#43 Temperature chart</strong> from HA history (24 h / 7 days) with heating runs shaded.</li>
+<li><strong>#45 Assist</strong>: ready-made English and Hebrew sentence files (<code>docs/assist/</code>), new <code>DudShemeshStatus</code> intent ("is there hot water?").</li>
+<li>Permissions: vacation joins mode and target as an everyday control any user may change; the anti-Legionella switch requires an admin when a person uses it.</li>
+</ul>
+<h2 id="050-hot-water-you-can-plan-on">0.5.0 - hot water you can plan on<a class="headerlink" href="#050-hot-water-you-can-plan-on" title="Permanent link">&para;</a></h2>
+<p>Bugs
+- <strong>#24</strong> Weather skip no longer skips pre-sunrise heating: default skip states are now <code>sunny</code> only (old <code>sunny,clear-night</code> default is migrated) and weather skip never applies while <code>sun.sun</code> is below the horizon.
+- <strong>#25</strong> Hebrew: full panel and card translation, fixed RTL garbling (<code>hours 2+</code>, <code>C°</code>, <code>70~ min</code>), timeline always reads 00→24 with the "now" marker in the right place.</p>
+<p>Features
+- <strong>#26</strong> "Will I have hot water?": next heat line ("Hot by 06:30" / "Morning shower · tomorrow 06:15"), planned runs painted on the Today timeline, showers-available estimate from new tank volume setting. Status sensor gains <code>next_heat_at</code>, <code>next_heat_source</code>, <code>next_heat_label</code>, <code>hot_by</code>, <code>showers_available</code>.
+- <strong>#27</strong> Safety: manual turn-ons are adopted and turned off after <code>manual_on_max_min</code> (default 60, 0 = off); <code>max_run_min</code> hard cap (default 180) also caps boost extensions; <code>max_tank_temp</code> over-temperature cutoff (default 75 °C); stale temperature sensor detection (<code>sensor_stale_min</code>, default 120) with <code>safety_stop</code> / <code>sensor_stale</code> notifications.
+- <strong>#29</strong> New Energy sensor (kWh, <code>total_increasing</code>) for the HA Energy dashboard.
+- <strong>#30</strong> Reports: "Saved this month ₪X", 30-day electric vs avoided kWh chart, human-readable durations (<strong>#42</strong>).
+- <strong>#36</strong> Lovelace card parity: extend buttons while heating, configured boost durations, −/+ target, next heat, run source, <code>entry_id</code> config, visual editor.
+- <strong>#38</strong> Schedules: on/off switch, Sunday-first days (Hebrew / HA first weekday), next-run line, skip next (<code>update_schedule</code> <code>skip_until</code>).
+- <strong>#39</strong> Header version sits next to the title. <strong>#40</strong> Gauge turns orange-red while heating and the badge shows the run source. <strong>#41</strong> Target −/+ buttons.
+- Mode explanation under the mode switch; Settings layout fixed (checkboxes, chips) and a new Safety section.
+- Heater state events are ignored when they no longer match the heater's current state (prevents a stale ON being adopted, or a stale OFF closing a new run).</p>
+<h2 id="0413-bug-fix-sweep-123">0.4.13 - bug-fix sweep (#1–#23)<a class="headerlink" href="#0413-bug-fix-sweep-123" title="Permanent link">&para;</a></h2>
+<p>Safety / data
+- <strong>#1</strong> Heater no longer left on after an HA restart mid-run: the active run is restored once HA has started (heater entity loaded), and kept even if the heater state is still unknown so the close timer turns it off.
+- <strong>#2 / #8</strong> Closing a run clears state before turning the heater off. A failed turn-off is logged instead of leaving the scheduler stuck in "heating", and our own turn-off no longer triggers a second <code>external_stop</code> close (duplicate history rows, events, notifications).
+- <strong>#3</strong> Options flow merges into existing options instead of replacing them; panel-only settings (notify, vacation, weather, tariff, calendar, ...) survive "Configure".
+- <strong>#4</strong> Multi-instance: each entry has its own storage file (<code>dud_shemesh.data.&lt;entry_id&gt;</code>); the pre-0.4.13 shared file is migrated to the first entry. Services are registered once and accept an optional <code>entry_id</code> (default: first entry); panel/WS/intents use the first entry in config order.
+- <strong>#5</strong> Anti-Legionella only recorded as done when the target temperature is reached.</p>
+<p>Behaviour
+- <strong>#6</strong> Target-reached check and fail detection are re-armed when the entry reloads during a run (any options save).
+- <strong>#7</strong> Temperature samples are not collected while the element is on, so a finished electric run is no longer mistaken for solar gain.
+- <strong>#9</strong> Only one run can start per minute tick; the run is claimed before the relay call, so network relays can't race two starts.
+- <strong>#10</strong> Pending calendar-triggered starts and the fail check are cancelled on stop/reload; seen-event keys are pruned.
+- <code>skipped_solar</code> / <code>skipped_weather</code> notifications are now actually sent.
+- <strong>#11</strong> Vacation "active until" no longer shifts by the UTC offset on every Settings save.
+- <strong>#12</strong> Dragging the target past 80 °C snaps to the nearest end instead of jumping to 20 °C.
+- <strong>#13</strong> Today timeline paints each run from its real start to its end.
+- <strong>#14</strong> Reports use actual element on-time (<code>actual_min</code>, new on close records) for all stop reasons; "Today" starts at local midnight.</p>
+<p>Minor
+- <strong>#15</strong> Options flow temp sensor uses <code>suggested_value</code> (blank is valid).
+- <strong>#16</strong> Service and intent numbers are coerced (<code>"30"</code> works).
+- <strong>#17</strong> <code>update_options</code> WS validates ranges; non-admin users may only change mode and target.
+- <strong>#18</strong> Calendar description values clamped (20–80 °C, 1–720 min).
+- <strong>#19</strong> Gauge target marker clamped; <code>0</code> can be saved for margin/tariff.
+- <strong>#20</strong> Periodic refresh no longer interrupts a target drag.
+- <strong>#21 / #22</strong> Card error rendering uses <code>textContent</code>; <code>console.*</code> removed; card shows service errors inline.
+- <strong>#23</strong> Tank temperature sensor has <code>device_class: temperature</code> and <code>state_class: measurement</code>; minutes-to-target is a duration.
+- Countdown hitting 0 refreshes once instead of every second.
+- New pytest suite (<code>tests/</code>) with a regression test per issue, run in CI.</p>
+<h2 id="0412-apply-panel-fixes-to-the-lovelace-card">0.4.12 - apply panel fixes to the Lovelace card<a class="headerlink" href="#0412-apply-panel-fixes-to-the-lovelace-card" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The fixes shipped in 0.4.5–0.4.10 only touched the sidebar panel (<code>panel.js</code>); the Lovelace card (<code>card.js</code>) still polled every 5 s with no live ticker, no <code>state_changed</code> subscription, no re-attach handling, and no visibility wake-up. All of the same logic is now ported to the card: per-second <code>Ends in</code> countdown with server clock skew correction, immediate refresh on heater entity state change, restart of timers/subscriptions when the card is re-attached to the DOM, and force-refresh when the browser tab returns to foreground.</li>
+<li>Removed the diagnostic <code>console.log</code> calls added in 0.4.11 from <code>panel.js</code>.</li>
+</ul>
+<h2 id="0411-diagnostic-logging-for-state-subscription-tick">0.4.11 - diagnostic logging for state subscription + tick<a class="headerlink" href="#0411-diagnostic-logging-for-state-subscription-tick" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Adds <code>console.log</code> calls to verify the panel actually subscribes to the heater entity's <code>state_changed</code> events and that the 1-second tick handler is firing. Logs prefixed <code>[dud_shemesh]</code>. Diagnostic only - will be cleaned up once the upstream issue is identified.</li>
+</ul>
+<h2 id="0410-subscribe-to-raw-state_changed-events">0.4.10 - subscribe to raw state_changed events<a class="headerlink" href="#0410-subscribe-to-raw-state_changed-events" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Replaced the <code>subscribe_trigger</code> WS message (which proved unreliable in <code>panel_custom</code>-hosted custom elements) with a direct <code>subscribeEvents("state_changed")</code> subscription. The callback filters by <code>entity_id</code> and triggers an immediate <code>_refresh()</code> whenever the heater entity changes - same mechanism Lovelace cards rely on, so panel state stays in sync with any external toggle.</li>
+</ul>
+<h2 id="049-visibility-handling-panel-version-pill">0.4.9 - visibility handling + panel version pill<a class="headerlink" href="#049-visibility-handling-panel-version-pill" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Panel registers a <code>visibilitychange</code> listener. When the browser tab returns to foreground (after being backgrounded, where browsers throttle <code>setInterval</code>), panel forces an immediate <code>_refresh()</code> plus a tick of the countdown so UI is current within a frame.</li>
+<li>Header now shows the panel.js version (<code>v0.4.9</code> next to the title) so it's possible to verify which build the browser actually loaded - useful when diagnosing cache issues after upgrades.</li>
+</ul>
+<h2 id="048-restart-timers-and-subscriptions-on-panel-re-attach">0.4.8 - restart timers and subscriptions on panel re-attach<a class="headerlink" href="#048-restart-timers-and-subscriptions-on-panel-re-attach" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Fix: HA detaches and re-attaches the panel custom-element when navigating between sidebar entries. Previous code cleared timers in <code>disconnectedCallback</code> but the <code>_init</code> guard (<code>if (!_initialized)</code>) prevented re-setup on re-attach. Result: no 5 s poll, no 1 s countdown ticker, no heater state subscription - UI froze until full page reload (F5).</li>
+<li><code>connectedCallback</code> now restarts timers and re-subscribes to the heater entity even when already initialized; <code>_init</code> is only called the first time.</li>
+</ul>
+<h2 id="047-live-heating-ends-in-countdown">0.4.7 - live "Heating ends in" countdown<a class="headerlink" href="#047-live-heating-ends-in-countdown" title="Permanent link">&para;</a></h2>
+<ul>
+<li>"Heating ends in" pill now ticks every second client-side instead of only refreshing on the 5 s WS poll. Format is <code>MM:SS</code> while under an hour, <code>Hh MMm</code> above. Server-client clock skew is corrected on every poll. When the timer hits 0, panel refreshes immediately to pick up the heat-finished state.</li>
+</ul>
+<h2 id="046-subscribe-to-heater-state-changes-via-ws-trigger">0.4.6 - subscribe to heater state changes via WS trigger<a class="headerlink" href="#046-subscribe-to-heater-state-changes-via-ws-trigger" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Panel registers a <code>subscribe_trigger</code> WS subscription on the configured heater entity. When the entity changes state, HA pushes a trigger message and the panel calls <code>_refresh()</code> 150 ms later. Doesn't depend on <code>set hass()</code> semantics or <code>panel_custom</code> reactive updates which proved unreliable.</li>
+</ul>
+<h2 id="045-refresh-panel-on-heater-entity-state-change">0.4.5 - refresh panel on heater entity state change<a class="headerlink" href="#045-refresh-panel-on-heater-entity-state-change" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Panel watches the configured heater entity directly via <code>set hass()</code> (called by HA on every state update). When the entity transitions on↔off, panel triggers an immediate <code>_refresh()</code>. Replaces the v0.4.4 event-bus subscription which relied on backend events being dispatched and required an HA restart to pick up; this approach reacts to the entity state itself.</li>
+</ul>
+<h2 id="044-instant-panel-refresh-on-heater-events">0.4.4 - instant panel refresh on heater events<a class="headerlink" href="#044-instant-panel-refresh-on-heater-events" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Panel subscribes to HA event bus (<code>dud_shemesh_heat_started</code>, <code>heat_finished</code>, <code>target_reached</code>, <code>boost_extended</code>) and refreshes UI immediately instead of waiting up to 5 s for the next poll. Closes the visible lag where a heater turned off externally still showed "STOP HEATING" until the next tick.</li>
+</ul>
+<h2 id="043-sync-with-external-heater-state-changes">0.4.3 - sync with external heater state changes<a class="headerlink" href="#043-sync-with-external-heater-state-changes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Listens to the heater entity's state. When it transitions to off/closed/unavailable while integration thinks it's heating (e.g. user turned it off via a custom button or another automation), the active session is closed cleanly with status <code>external_stop</code>. Panel and reports stay in sync.</li>
+</ul>
+<h2 id="042-readme-screenshots">0.4.2 - README screenshots<a class="headerlink" href="#042-readme-screenshots" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Added 4 screenshots to README: panel control, panel reports, settings (advanced expanded), Lovelace card.</li>
+</ul>
+<h2 id="041-fix-servicesyaml-validation">0.4.1 - fix services.yaml validation<a class="headerlink" href="#041-fix-servicesyaml-validation" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Quoted <code>"off"</code> in set_mode selector options. YAML 1.1 parses unquoted <code>off</code> as boolean false, which broke hassfest validation of services.yaml.</li>
+</ul>
+<h2 id="040-notifications-vacation-drag-target-temp-graph-calendar-voice-multi-tank-rtl">0.4.0 - notifications, vacation, drag-target, temp graph, calendar, voice, multi-tank, RTL<a class="headerlink" href="#040-notifications-vacation-drag-target-temp-graph-calendar-voice-multi-tank-rtl" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Notifications</strong>: pick one or more <code>notify.*</code> services and tick which events to push: heat_start, heat_end, target_reached, heat_not_rising, skipped_solar, skipped_weather, legionella_done.</li>
+<li><strong>Vacation mode</strong>: pick an "active until" date; integration suspends schedules and auto-runs and holds the tank at a configurable anti-mold temp (default 30°C). Dashboard shows banner with one-tap End button.</li>
+<li><strong>Drag-target on the gauge</strong>: grab the target marker dot and drag along the arc to set a new target temp without opening Settings.</li>
+<li><strong>24h tank-temp graph</strong> on Reports tab: smooth SVG line of rolling temperature samples.</li>
+<li><strong>Calendar-driven one-off heat</strong>: optional HA calendar entity. Events whose summary contains a configured keyword (default <code>dud,water,חם,מים,דוד</code>) trigger a heat run. Description can carry minutes (<code>30m</code>) and target temperature (<code>60c</code>).</li>
+<li><strong>Voice via Assist</strong>: registers <code>DudShemeshBoost</code> and <code>DudShemeshStop</code> intents. Add Assist sentence triggers like "boost the water heater" → boost. Slot <code>minutes</code> optional.</li>
+<li><strong>Multi-tank</strong>: removed single-instance restriction. You can add the integration multiple times for vacation homes / two heaters; each entry runs its own scheduler. (Panel UI still shows the first entry; full multi-tank picker UI planned for v0.5.)</li>
+<li><strong>Hebrew RTL panel</strong>: when HA language is <code>he</code>, panel switches to right-to-left layout and translates tab labels, mode pills, vacation banner, and Legionella indicator.</li>
+</ul>
+<h2 id="030-reports-tab-visibility-polish">0.3.0 - Reports tab + visibility polish<a class="headerlink" href="#030-reports-tab-visibility-polish" title="Permanent link">&para;</a></h2>
+<h2 id="030-reports-tab-visibility-polish_1">0.3.0 - Reports tab + visibility polish<a class="headerlink" href="#030-reports-tab-visibility-polish_1" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Reports tab</strong>: dedicated view with kWh, ₪ cost (configurable IEC tariff), on-time minutes for today / 7 days / 30 days; heater health average heat-rate °C/min trend; entire-history skip-reasons summary.</li>
+<li><strong>Settings: Basic / Advanced split</strong>. Basic shows target temp, boost-button durations, wattage, tariff. Advanced reveals comfort windows, weather entity, solar tracking, fail detection, anti-Legionella.</li>
+<li><strong>Configurable boost durations</strong>: comma-separated minutes (default <code>30,60,120</code>); also rendered as inline extend buttons while heating.</li>
+<li><strong>Anti-Legionella next-due indicator</strong>: side-pill on the gauge shows days until next sterilization, turns red when overdue.</li>
+<li><strong>Pulsing gauge ring</strong> while heating; smooth status transitions.</li>
+<li><strong>Tariff for cost calc</strong>: configurable ₪/kWh in Settings (default 0.62 reflecting common IEC daytime rate).</li>
+<li>WS state now exposes <code>last_legionella</code> and <code>legionella_next_due</code> timestamps.</li>
+</ul>
+<h2 id="020-smart-layer">0.2.0 - smart layer<a class="headerlink" href="#020-smart-layer" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Real Auto mode</strong>: predictive pre-heat. Configure comfort windows like <code>06:30-08:00,19:00-21:00</code>. Integration estimates time-to-target and fires the element just-in-time before each window. Skipped if tank already at target, sun is gaining, or weather forecast is sunny.</li>
+<li><strong>Solar gain detection</strong>: rolling 30-minute temperature delta. When tank rises above the configured threshold without electric heat, integration reports "solar gaining" and skips the next scheduled run.</li>
+<li><strong>Boost = extend, not replace</strong>: pressing +30 / +1 h while already heating now adds time to the current run instead of restarting from zero. New event <code>boost_extended</code>.</li>
+<li><strong>Weather-aware skip</strong>: optional weather entity. Schedule mode skips runs when the weather state is in the skip list (default <code>sunny,clear-night</code>). New history status <code>skipped_weather</code> and <code>skipped_solar</code>.</li>
+<li><strong>Heat-not-rising detection</strong>: optional safety check. After a configured number of minutes from heat start, verify tank temperature has risen by at least N °C. If not → fire <code>heat_not_rising</code> event and log error.</li>
+<li>New status fields exposed via WebSocket: <code>solar_rise_per_30min</code>, <code>solar_gaining</code>, <code>weather_skip_active</code>.</li>
+</ul>
+<h2 id="011-appliance-grade-lovelace-card">0.1.1 - appliance-grade Lovelace card<a class="headerlink" href="#011-appliance-grade-lovelace-card" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Lovelace card rebuilt to look like a real smart-dud controller: SVG gauge with target marker, status badge, side pills (ends-in / target), three large boost buttons (+30/+1h/+2h), STOP HEATING button while running, Auto/Schedule/Off mode toggle.</li>
+<li>Cache-busted via existing <code>?v=&lt;version&gt;</code> resource URL - restart HA after update for fresh card.</li>
+</ul>
+<h2 id="010-initial-scaffold">0.1.0 - initial scaffold<a class="headerlink" href="#010-initial-scaffold" title="Permanent link">&para;</a></h2>
+<ul>
+<li>HACS custom integration skeleton modeled on schedule_wizard.</li>
+<li>Config flow + options flow (heater entity, temp sensor, target temp, wattage, mode, anti-Legionella).</li>
+<li>Storage helper for schedules / history / active boost / last-Legionella timestamp.</li>
+<li>Scheduler: per-minute cron tick, manual boost, scheduled heat, skip-if-warm, target-temp auto-close, anti-Legionella weekly cycle.</li>
+<li>Services: <code>boost</code>, <code>cancel_boost</code>, <code>set_mode</code>, <code>set_target_temp</code>, <code>add_schedule</code>, <code>update_schedule</code>, <code>remove_schedule</code>, <code>legionella_run_now</code>, <code>list_config</code>.</li>
+<li>Events: <code>heat_started</code>, <code>heat_finished</code>, <code>target_reached</code>.</li>
+<li>Sensors: status, tank temperature, estimated minutes to target.</li>
+<li>Sidebar panel custom-element with circular SVG gauge, status badge, boost row, mode toggle, today timeline, schedule list/editor, settings drawer.</li>
+<li>Companion Lovelace card.</li>
+<li>English + Hebrew translations for config flow and options.</li>
+<li>Brand placeholder PNGs.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  חזרה למעלה
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="כותרת תחתונה" >
+        
+          
+          <a href="../troubleshooting/" class="md-footer__link md-footer__link--prev" aria-label="הקודם: פתרון בעיות">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                הקודם
+              </span>
+              <div class="md-ellipsis">
+                פתרון בעיות
+              </div>
+            </div>
+          </a>
+        
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      MIT License
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u05d4\u05d5\u05e2\u05ea\u05e7 \u05dc\u05dc\u05d5\u05d7", "clipboard.copy": "\u05d4\u05e2\u05ea\u05e7\u05d4 \u05dc\u05dc\u05d5\u05d7", "search.result.more.one": "\u05e2\u05d5\u05d3 \u05d0\u05d7\u05d3 \u05d1\u05d3\u05e3 \u05d4\u05d6\u05d4", "search.result.more.other": "\u05e2\u05d5\u05d3 # \u05d1\u05d3\u05e3 \u05d4\u05d6\u05d4", "search.result.none": "\u05d0\u05d9\u05df \u05de\u05e1\u05de\u05db\u05d9\u05dd \u05ea\u05d5\u05d0\u05de\u05d9\u05dd", "search.result.one": "\u05de\u05e1\u05de\u05da1 \u05ea\u05d5\u05d0\u05dd", "search.result.other": "# \u05de\u05e1\u05de\u05da \u05ea\u05d5\u05d0\u05dd", "search.result.placeholder": "\u05d9\u05e9 \u05dc\u05d4\u05e7\u05dc\u05d9\u05d3 \u05db\u05d3\u05d9 \u05dc\u05d4\u05ea\u05d7\u05d9\u05dc \u05dc\u05d7\u05e4\u05e9", "search.result.term.missing": "\u05d7\u05e1\u05e8", "select.version": "\u05d1\u05d7\u05d9\u05e8\u05ea \u05d2\u05e8\u05e1\u05d4"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

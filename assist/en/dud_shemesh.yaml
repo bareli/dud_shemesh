@@ -1,0 +1,35 @@
+# Copy to <config>/custom_sentences/en/dud_shemesh.yaml and restart Home Assistant.
+language: "en"
+intents:
+  DudShemeshBoost:
+    data:
+      - sentences:
+          - "(boost|heat [up]|turn on) [the] (water heater|dud|boiler|hot water) [for] {minutes} minutes"
+      - sentences:
+          - "(boost|heat [up]|turn on) [the] (water heater|dud|boiler|hot water) for half an hour"
+        slots:
+          minutes: 30
+      - sentences:
+          - "(boost|heat [up]|turn on) [the] (water heater|dud|boiler|hot water) for (an|one) hour"
+          - "(boost|heat [up]|turn on) [the] (water heater|dud|boiler|hot water)"
+        slots:
+          minutes: 60
+      - sentences:
+          - "(boost|heat [up]|turn on) [the] (water heater|dud|boiler|hot water) for two hours"
+        slots:
+          minutes: 120
+  DudShemeshStop:
+    data:
+      - sentences:
+          - "(stop|turn off) [the] (water heater|dud|boiler|hot water|heating)"
+  DudShemeshStatus:
+    data:
+      - sentences:
+          - "is [there] [the] hot water [ready]"
+          - "is the water hot [yet]"
+          - "how hot is the (water|dud|water heater|boiler)"
+lists:
+  minutes:
+    range:
+      from: 5
+      to: 180

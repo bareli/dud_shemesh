@@ -1,0 +1,35 @@
+# העתיקו ל- <config>/custom_sentences/he/dud_shemesh.yaml והפעילו מחדש את Home Assistant.
+language: "he"
+intents:
+  DudShemeshBoost:
+    data:
+      - sentences:
+          - "(תדליק|הדלק|תפעיל|הפעל|תחמם|חמם) [את] (הדוד|המים) [ל] {minutes} דקות"
+      - sentences:
+          - "(תדליק|הדלק|תפעיל|הפעל|תחמם|חמם) [את] (הדוד|המים) לחצי שעה"
+        slots:
+          minutes: 30
+      - sentences:
+          - "(תדליק|הדלק|תפעיל|הפעל|תחמם|חמם) [את] (הדוד|המים) לשעה"
+          - "(תדליק|הדלק|תפעיל|הפעל|תחמם|חמם) [את] (הדוד|המים)"
+        slots:
+          minutes: 60
+      - sentences:
+          - "(תדליק|הדלק|תפעיל|הפעל|תחמם|חמם) [את] (הדוד|המים) לשעתיים"
+        slots:
+          minutes: 120
+  DudShemeshStop:
+    data:
+      - sentences:
+          - "(תכבה|כבה|תפסיק|הפסק) [את] (הדוד|החימום)"
+  DudShemeshStatus:
+    data:
+      - sentences:
+          - "[האם] יש מים חמים"
+          - "(המים|הדוד) (חמים|חם)"
+          - "כמה (חמים המים|חם הדוד)"
+lists:
+  minutes:
+    range:
+      from: 5
+      to: 180
