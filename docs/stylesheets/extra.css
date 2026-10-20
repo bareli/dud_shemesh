@@ -1,0 +1,7 @@
+/* Keep code, tables of ids and inline code left-to-right on RTL pages. */
+[dir="rtl"] .md-typeset pre,
+[dir="rtl"] .md-typeset code,
+[dir="rtl"] .md-typeset .highlight {
+  direction: ltr;
+  text-align: left;
+}

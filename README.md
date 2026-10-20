@@ -1,5 +1,7 @@
 # Dud Shemesh — Smart solar water heater controller for Home Assistant
 
+**Documentation:** https://bareli.github.io/dud_shemesh/ (English and Hebrew)
+
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![Validate](https://github.com/bareli/dud_shemesh/actions/workflows/validate.yml/badge.svg)](https://github.com/bareli/dud_shemesh/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

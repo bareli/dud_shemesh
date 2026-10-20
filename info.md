@@ -1,5 +1,7 @@
 # Dud Shemesh
 
+**Documentation:** https://bareli.github.io/dud_shemesh/ (English and Hebrew)
+
 Smart controller for Israeli solar water heater (dud shemesh) electric backup. HACS-installable HA integration with a sidebar UI that looks and feels like a commercial smart-dud appliance.
 
 ## Features (v0.1)
