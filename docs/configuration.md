@@ -2,7 +2,7 @@
 
 Settings live in two places: the integration's **Configure** dialog in Home Assistant, and the **Settings** tab of the Dud Shemesh panel (the gear icon). Panel settings are for admins only. Everyday controls (mode, target temperature, heat now, vacation) work for every user.
 
-![Settings](screenshots/panel-settings.png)
+![Panel settings dialog, Basics tab](assets/screens/settings.png)
 
 ## Modes
 
@@ -13,6 +13,9 @@ Settings live in two places: the integration's **Configure** dialog in Home Assi
 | **Off** | No automatic heating. The boost buttons still work. |
 
 ## Integration options (Configure dialog)
+
+![Dud Shemesh options dialog in Home Assistant: heater, temperature sensor, target and wattage](assets/screens/options.png)
+
 
 Heater, tank temperature sensor, target temperature, element wattage, tank volume, electricity price, comfort windows, mode, and the anti-Legionella cycle (on or off, temperature, interval in days). Comfort windows must be `HH:MM-HH:MM` ranges separated by commas; anything else is rejected.
 

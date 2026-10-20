@@ -2,7 +2,9 @@
 
 ## Panel
 
-![Panel control](screenshots/panel-control.png)
+![Dud Shemesh panel: gauge at 46 degrees heating on boost, stop button, mode switch, timeline and schedules](assets/screens/control.png)
+
+![The panel on a phone screen](assets/screens/control-phone.png)
 
 - Circular gauge with a **drag-to-set** target marker and target minus/plus buttons. The gauge is also a keyboard slider (arrows, Page Up/Down, Home/End).
 - Status badge: Ready, Heating, Waiting, Solar or Cold. While heating it shows the source of the run, for example "Heating · Boost".
@@ -62,7 +64,7 @@ The status sensor has the attributes `current_temp`, `target_temp`, `active`, `n
 
 ## Lovelace card
 
-![Lovelace card](screenshots/card.png)
+![Dud Shemesh Lovelace card with gauge, stop button and mode switch](assets/screens/card.png)
 
 A compact gauge with target minus/plus, next heat, boost / extend / stop and the mode switch. It has a visual editor.
 

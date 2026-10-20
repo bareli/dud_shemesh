@@ -4,7 +4,7 @@ A Home Assistant **custom integration** that turns any smart switch and a tank t
 
 It adds a sidebar panel with a big gauge, one-tap boost buttons, schedules, an Auto mode that heats ahead of the times you want hot water, reports, and a Lovelace card. It runs entirely inside Home Assistant, on the relay and sensor you already have.
 
-![Panel control](screenshots/panel-control.png)
+![Dud Shemesh panel: gauge at 46 degrees heating on boost, stop button, mode switch, timeline and schedules](assets/screens/control.png)
 
 ## What you get
 
